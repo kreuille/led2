@@ -10,6 +10,7 @@ interface WledState {
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Application root not found");
+const root = app;
 
 let baseUrl = "";
 let connectionState: ConnectionState = "idle";
@@ -19,7 +20,7 @@ let state: WledState = { on: false, bri: 128, seg: [{ col: [[255, 98, 50]], fx: 
 function render() {
   const statusLabel = connectionState === "connected" ? "Connecté" : connectionState === "connecting" ? "Connexion…" : connectionState === "error" ? "Connexion impossible" : "Prêt à connecter";
   const statusClass = connectionState === "connected" ? "online" : connectionState === "error" ? "error" : "";
-  app.innerHTML = `
+  root.innerHTML = `
     <main class="shell">
       <header class="topbar">
         <div class="brand"><span class="brand-mark">✦</span><div><strong>LED2</strong><small>WLED control studio</small></div></div>
