@@ -23,6 +23,7 @@ let savedDevices: SavedDevice[] = JSON.parse(localStorage.getItem("led2.devices"
 let scanResults: DiscoveredDevice[] = [];
 let scanning = false;
 let scanMessage = "";
+const effects = [{ id: 0, label: "Couleur fixe" }, { id: 1, label: "Blink" }, { id: 9, label: "Fire flicker" }, { id: 12, label: "Rainbow" }, { id: 45, label: "Plasma" }];
 
 function render() {
   const statusLabel = connectionState === "connected" ? "Connecté" : connectionState === "connecting" ? "Connexion…" : connectionState === "error" ? "Connexion impossible" : "Prêt à connecter";
@@ -47,12 +48,14 @@ function render() {
       <section class="dashboard ${connectionState !== "connected" ? "muted" : ""}">
         <div class="section-title"><div><p class="eyebrow">ESPACE DE CONTRÔLE</p><h2>${deviceName}</h2></div><span class="locked">${connectionState === "connected" ? "ACTIF" : "EN ATTENTE"}</span></div>
         <div class="controls"><article class="control-card power-card"><div><span class="control-label">ALIMENTATION</span><h3>${state.on ? "Allumées" : "Éteintes"}</h3></div><button class="power-toggle ${state.on ? "active" : ""}" id="power-toggle" aria-label="Basculer l'alimentation"><span></span></button></article><article class="control-card"><span class="control-label">LUMINOSITÉ</span><div class="value-row"><h3>${Math.round((state.bri / 255) * 100)}%</h3><span>INTENSITÉ</span></div><input id="brightness" type="range" min="1" max="255" value="${state.bri}" ${connectionState !== "connected" ? "disabled" : ""} /></article><article class="control-card color-card"><span class="control-label">COULEUR ACTUELLE</span><div class="color-preview"><span></span><strong>Orange solaire</strong></div></article></div>
+      <div class="effect-panel"><span class="control-label">EFFET WLED</span><select id="effect" ${connectionState !== "connected" ? "disabled" : ""}>${effects.map(effect => `<option value="${effect.id}" ${state.seg[0]?.fx === effect.id ? "selected" : ""}>${effect.label}</option>`).join("")}</select></div>
       </section>
     </main>`;
 
   document.querySelector<HTMLFormElement>("#connect-form")?.addEventListener("submit", connect);
   document.querySelector<HTMLButtonElement>("#power-toggle")?.addEventListener("click", () => updateState({ on: !state.on }));
   document.querySelector<HTMLInputElement>("#brightness")?.addEventListener("input", (event) => updateState({ bri: Number((event.target as HTMLInputElement).value) }));
+  document.querySelector<HTMLSelectElement>("#effect")?.addEventListener("change", (event) => { const fx = Number((event.target as HTMLSelectElement).value); state = { ...state, seg: [{ ...state.seg[0], fx }] }; updateState({ seg: state.seg }); });
   document.querySelector<HTMLButtonElement>("#scan-button")?.addEventListener("click", scanNetwork);
   document.querySelectorAll<HTMLButtonElement>("[data-device-url]").forEach(button => button.addEventListener("click", () => selectDevice(button.dataset.deviceUrl || "")));
   document.querySelectorAll<HTMLButtonElement>("[data-saved-url]").forEach(button => button.addEventListener("click", () => selectDevice(button.dataset.savedUrl || "")));
