@@ -13,6 +13,8 @@ npm run dev
 
 La version actuelle permet de connecter un appareil, scanner une plage réseau, mémoriser les appareils trouvés, piloter l'alimentation et la luminosité, et sélectionner un effet WLED.
 
+Les scènes enregistrées peuvent aussi être envoyées en parallèle à tous les appareils mémorisés.
+
 Les détails de la découverte réseau sont décrits dans [`docs/NETWORK.md`](docs/NETWORK.md).
 
 Le scan réseau depuis GitHub Pages peut être limité par le navigateur (HTTPS vers des appareils locaux en HTTP) ou par la configuration CORS de WLED. Pour un usage local complet, lancer LED2 avec `npm run dev` sur le même réseau que les appareils.
