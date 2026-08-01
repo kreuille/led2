@@ -23,6 +23,7 @@ let savedDevices: SavedDevice[] = JSON.parse(localStorage.getItem("led2.devices"
 let scanResults: DiscoveredDevice[] = [];
 let scanning = false;
 let scanMessage = "";
+let detectedPrefixes: string[] = [];
 const effects = [{ id: 0, label: "Couleur fixe" }, { id: 1, label: "Blink" }, { id: 9, label: "Fire flicker" }, { id: 12, label: "Rainbow" }, { id: 45, label: "Plasma" }];
 
 function render() {
@@ -43,7 +44,7 @@ function render() {
         <form id="connect-form" class="connect-form"><label for="device-url">Adresse de l'appareil</label><div class="input-row"><input id="device-url" type="text" placeholder="http://wled.local ou 192.168.1.42" value="${baseUrl}" /><button type="submit">${connectionState === "connecting" ? "Connexion…" : "Connecter"}<span>→</span></button></div><p class="hint">L'adresse locale de votre appareil WLED</p></form>
         ${connectionState === "error" ? '<p class="error-message">Impossible de joindre cet appareil. Vérifiez son adresse et votre réseau.</p>' : ""}
       </section>
-      <div class="device-tools"><div><p class="eyebrow">DÉCOUVERTE LOCALE</p><h3>Appareils sur le réseau</h3><p class="hint">Préfixe réseau, par exemple 192.168.1, puis lancez le scan.</p></div><div class="scan-row"><input id="network-prefix" type="text" value="192.168.1" aria-label="Préfixe réseau" /><button id="scan-button" class="secondary-button">${scanning ? "Scan en cours…" : "Scanner"}</button></div>${scanMessage ? `<p class="hint">${scanMessage}</p>` : ""}${scanResults.length ? `<div class="device-list">${scanResults.map(device => `<button class="device-item" data-device-url="${device.url}"><span class="device-icon">✦</span><span><strong>${device.name}</strong><small>${device.url}</small></span><span>→</span></button>`).join("")}</div>` : ""}</div>
+      <div class="device-tools"><div><p class="eyebrow">DÉCOUVERTE LOCALE</p><h3>Appareils sur le réseau</h3><p class="hint">LED2 tente d’identifier la forme de votre réseau avant de scanner les adresses.</p></div><div class="scan-row"><input id="network-prefix" type="text" value="${detectedPrefixes[0] || "192.168.1"}" aria-label="Préfixe réseau" /><button id="detect-button" class="secondary-button">Détecter</button><button id="scan-button" class="secondary-button">${scanning ? "Scan en cours…" : "Scanner"}</button></div>${scanMessage ? `<p class="hint">${scanMessage}</p>` : ""}${scanResults.length ? `<div class="device-list">${scanResults.map(device => `<button class="device-item" data-device-url="${device.url}"><span class="device-icon">✦</span><span><strong>${device.name}</strong><small>${device.url}</small></span><span>→</span></button>`).join("")}</div>` : ""}</div>
       ${savedDevices.length ? `<div class="saved-devices"><p class="eyebrow">MES APPAREILS</p>${savedDevices.map(device => `<button class="saved-device" data-saved-url="${device.url}"><span>${device.name}</span><small>${device.url}</small></button>`).join("")}</div>` : ""}
       <section class="dashboard ${connectionState !== "connected" ? "muted" : ""}">
         <div class="section-title"><div><p class="eyebrow">ESPACE DE CONTRÔLE</p><h2>${deviceName}</h2></div><span class="locked">${connectionState === "connected" ? "ACTIF" : "EN ATTENTE"}</span></div>
@@ -57,6 +58,7 @@ function render() {
   document.querySelector<HTMLInputElement>("#brightness")?.addEventListener("input", (event) => updateState({ bri: Number((event.target as HTMLInputElement).value) }));
   document.querySelector<HTMLSelectElement>("#effect")?.addEventListener("change", (event) => { const fx = Number((event.target as HTMLSelectElement).value); state = { ...state, seg: [{ ...state.seg[0], fx }] }; updateState({ seg: state.seg }); });
   document.querySelector<HTMLButtonElement>("#scan-button")?.addEventListener("click", scanNetwork);
+  document.querySelector<HTMLButtonElement>("#detect-button")?.addEventListener("click", detectNetwork);
   document.querySelectorAll<HTMLButtonElement>("[data-device-url]").forEach(button => button.addEventListener("click", () => selectDevice(button.dataset.deviceUrl || "")));
   document.querySelectorAll<HTMLButtonElement>("[data-saved-url]").forEach(button => button.addEventListener("click", () => selectDevice(button.dataset.savedUrl || "")));
 }
@@ -66,16 +68,40 @@ function selectDevice(url: string) { baseUrl = url; const input = document.query
 function rememberDevice(device: SavedDevice) { savedDevices = [device, ...savedDevices.filter(item => item.url !== device.url)].slice(0, 12); localStorage.setItem("led2.devices", JSON.stringify(savedDevices)); }
 
 async function scanNetwork() {
-  const prefix = document.querySelector<HTMLInputElement>("#network-prefix")?.value.trim().replace(/\.$/, "") || "192.168.1";
-  if (!/^\d{1,3}(\.\d{1,3}){2}$/.test(prefix)) { scanMessage = "Format attendu : 192.168.1"; render(); return; }
-  scanning = true; scanResults = []; scanMessage = "Recherche des appareils WLED…"; render();
+  const typedPrefix = document.querySelector<HTMLInputElement>("#network-prefix")?.value.trim().replace(/\.$/, "") || "";
+  if (!/^\d{1,3}(\.\d{1,3}){2}$/.test(typedPrefix)) { scanMessage = "Format attendu : 3 nombres, par exemple 192.168.1"; render(); return; }
+  scanning = true; scanResults = []; scanMessage = `Recherche sur ${typedPrefix}.x…`; render();
   const found: DiscoveredDevice[] = [];
-  const candidates = Array.from({ length: 254 }, (_, index) => `${prefix}.${index + 1}`);
+  const candidates = Array.from({ length: 254 }, (_, index) => `${typedPrefix}.${index + 1}`);
   for (let index = 0; index < candidates.length; index += 24) {
     await Promise.all(candidates.slice(index, index + 24).map(async host => { try { const response = await fetch(`http://${host}/json/info`, { signal: AbortSignal.timeout(700) }); if (!response.ok) return; const info = await response.json() as { name?: string; ver?: string }; if (info.ver || info.name) found.push({ url: `http://${host}`, name: info.name || `WLED ${host}`, version: info.ver }); } catch { /* absent or inaccessible */ } }));
     scanMessage = `${Math.min(index + 24, 254)} / 254 adresses vérifiées…`; render();
   }
   scanResults = found; scanning = false; scanMessage = found.length ? `${found.length} appareil(s) trouvé(s).` : "Aucun appareil trouvé. Vérifiez le préfixe et les permissions CORS de WLED."; render();
+}
+
+async function detectNetwork() {
+  scanMessage = "Détection de la forme du réseau…"; render();
+  const prefixes = new Set<string>();
+  try {
+    const connection = new RTCPeerConnection({ iceServers: [] });
+    connection.createDataChannel("led2");
+    connection.onicecandidate = event => {
+      const candidate = event.candidate?.candidate || "";
+      const match = candidate.match(/(?:candidate|relay)\s+\d+\s+\w+\s+\d+\s+(\d{1,3}(?:\.\d{1,3}){3})/);
+      if (match) { const parts = match[1].split("."); prefixes.add(parts.slice(0, 3).join(".")); }
+    };
+    await connection.setLocalDescription(await connection.createOffer());
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    connection.close();
+  } catch { /* ICE discovery can be blocked by the browser */ }
+  detectedPrefixes = [...prefixes];
+  if (!detectedPrefixes.length) {
+    scanMessage = "Le navigateur masque l’adresse locale. Renseignez le préfixe de votre routeur, par exemple 192.168.0, 192.168.1 ou 10.0.0.";
+  } else {
+    scanMessage = `Réseau détecté : ${detectedPrefixes.join(", ")}. Vérifiez le préfixe puis lancez le scan.`;
+  }
+  render();
 }
 
 async function connect(event: SubmitEvent) {
