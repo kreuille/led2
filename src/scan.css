@@ -26,4 +26,6 @@
 .scene-apply strong, .scene-apply small { display: block; } .scene-apply small { margin-top: 3px; color: #6e8094; font: 10px 'DM Mono', monospace; }
 .scene-swatch { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 15px currentColor; }
 .scene-delete { color: #718398; background: transparent; font-size: 18px; } .scene-delete:hover { color: #ef927d; }
+.scene-group { padding: 6px 8px; color: #f4b092; background: #172a3d; border: 1px solid #375069; border-radius: 6px; font: 9px 'DM Mono', monospace; } .scene-group:disabled { opacity: .35; cursor: not-allowed; }
+.group-message { margin: -10px 0 15px; color: #86d5a8; font: 11px 'DM Mono', monospace; }
 @media (max-width: 720px) { .scan-row { align-items: stretch; flex-direction: column; } .scan-row input { max-width: none; } }
