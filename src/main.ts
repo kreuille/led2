@@ -102,7 +102,33 @@ function saveCurrentScene() { const name = window.prompt("Nom de la scène", `Sc
 function applyScene(id: string) { const scene = scenes.find(item => item.id === id); if (!scene) return; state = structuredClone(scene.state); render(); updateState(state); }
 function deleteScene(id: string) { scenes = scenes.filter(scene => scene.id !== id); saveScenes(); render(); }
 async function applySceneToAll(id: string) { const scene = scenes.find(item => item.id === id); if (!scene || savedDevices.length < 2) return; groupMessage = "Application de la scène sur les appareils…"; render(); const results = await Promise.allSettled(savedDevices.map(device => fetch(`${device.url}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scene.state), signal: AbortSignal.timeout(5000) }))); const success = results.filter(result => result.status === "fulfilled" && result.value.ok).length; groupMessage = `${success} / ${savedDevices.length} appareil(s) mis à jour.`; render(); }
-async function applyZones() { if (connectionState !== "connected") return; const segments: Array<{ start: number; stop: number; fx: number }> = []; let start = -1; for (let index = 0; index <= TOTAL_ZONES; index++) { if (index < TOTAL_ZONES && zoneState[index] && start < 0) start = index; if ((index === TOTAL_ZONES || !zoneState[index]) && start >= 0) { segments.push({ start: start * 2, stop: index * 2, fx: 0 }); start = -1; } } await updateState({ seg: segments.map((segment, id) => ({ id, ...segment, sx: 128, ix: 128, col: [[255, 98, 50]] })) }); }
+async function sendWledState(payload: unknown) { if (connectionState !== "connected") return false; const response = await fetch(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(`WLED state rejected: ${response.status}`); return true; }
+async function applyZones() {
+  if (connectionState !== "connected") return;
+  const totalLeds = TOTAL_ZONES * 2;
+  const groups: Array<{ start: number; stop: number }> = [];
+  let start = -1;
+  for (let zone = 0; zone <= TOTAL_ZONES; zone++) {
+    if (zone < TOTAL_ZONES && zoneState[zone] && start < 0) start = zone;
+    if ((zone === TOTAL_ZONES || !zoneState[zone]) && start >= 0) { groups.push({ start: start * 2, stop: zone * 2 }); start = -1; }
+  }
+  try {
+    if (groups.length <= 14) {
+      const segments = groups.flatMap((group, index) => [
+        { id: index * 2, start: group.start, stop: group.stop, on: true, fx: 0, col: [[255, 98, 50]] },
+        { id: index * 2 + 1, start: group.start + 1, stop: group.stop + 1, on: true, fx: 0, col: [[128, 128, 128]] },
+      ]);
+      for (let id = segments.length; id < 30; id++) await sendWledState({ seg: [{ id, stop: 0 }] });
+      await sendWledState({ seg: segments });
+    } else {
+      const masked: Array<number | number[]> = [];
+      for (let zone = 0; zone < TOTAL_ZONES; zone++) if (!zoneState[zone]) { masked.push(zone * 2, [0, 0, 0]); masked.push(zone * 2 + 1, [0, 0, 0]); }
+      await sendWledState({ seg: [{ id: 0, start: 0, stop: totalLeds, on: true, fx: 0, col: [[255, 98, 50]], i: masked }, { id: 1, start: 1, stop: totalLeds, on: true, fx: 0, col: [[128, 128, 128]], i: masked }] });
+    }
+    groupMessage = `${zoneState.filter(Boolean).length} zone(s) appliquée(s) individuellement.`;
+  } catch { connectionState = "error"; groupMessage = "Échec de l’application des zones. Vérifiez la connexion WLED."; }
+  render();
+}
 async function useWledPreset(id: number) { if (connectionState !== "connected") return; presetMessage = presetRecordMode ? `Enregistrement de la mémoire ${id}…` : `Chargement de la mémoire ${id}…`; render(); try { const payload = presetRecordMode ? { psave: id } : { ps: id }; const response = await fetch(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(); presetRecordMode = false; presetMessage = `Mémoire ${id} ${payload.psave ? "enregistrée" : "chargée"}.`; } catch { presetMessage = `Impossible de modifier la mémoire ${id}.`; } render(); }
 function updateWhite(level: number, temperature: number) { const warm = Math.round(255 * Math.max(0, 1 - temperature / 100)); const cool = Math.round(255 * Math.min(1, temperature / 100)); state = { ...state, seg: state.seg.map(segment => ({ ...segment, col: [segment.col[0], [warm, cool, level]] })) }; updateState({ seg: state.seg }); }
 
