@@ -15,4 +15,7 @@
 .saved-device { display: block; width: auto; min-width: 190px; }
 .effect-panel { display: flex; align-items: center; gap: 18px; margin-top: 16px; padding: 16px 20px; border: 1px solid #243547; background: rgba(13, 26, 41, .74); border-radius: 14px; }
 .effect-panel select { min-width: 190px; padding: 10px 12px; color: #e8edf4; background: #091523; border: 1px solid #2a3d51; border-radius: 8px; }
+.mini-control { display: flex; align-items: center; gap: 8px; color: #738398; font: 9px 'DM Mono', monospace; letter-spacing: .12em; }
+.mini-control input[type=color] { width: 30px; height: 30px; padding: 2px; border: 1px solid #2a3d51; background: #091523; border-radius: 7px; }
+.mini-control input[type=range] { width: 90px; margin: 0; }
 @media (max-width: 720px) { .scan-row { align-items: stretch; flex-direction: column; } .scan-row input { max-width: none; } }

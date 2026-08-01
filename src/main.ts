@@ -25,6 +25,7 @@ let scanning = false;
 let scanMessage = "";
 let detectedPrefixes: string[] = [];
 const effects = [{ id: 0, label: "Couleur fixe" }, { id: 1, label: "Blink" }, { id: 9, label: "Fire flicker" }, { id: 12, label: "Rainbow" }, { id: 45, label: "Plasma" }];
+function firstColor() { const color = state.seg[0]?.col?.[0] || [255, 98, 50]; return `#${color.map(value => value.toString(16).padStart(2, "0")).join("")}`; }
 
 function render() {
   const statusLabel = connectionState === "connected" ? "Connecté" : connectionState === "connecting" ? "Connexion…" : connectionState === "error" ? "Connexion impossible" : "Prêt à connecter";
@@ -49,7 +50,7 @@ function render() {
       <section class="dashboard ${connectionState !== "connected" ? "muted" : ""}">
         <div class="section-title"><div><p class="eyebrow">ESPACE DE CONTRÔLE</p><h2>${deviceName}</h2></div><span class="locked">${connectionState === "connected" ? "ACTIF" : "EN ATTENTE"}</span></div>
         <div class="controls"><article class="control-card power-card"><div><span class="control-label">ALIMENTATION</span><h3>${state.on ? "Allumées" : "Éteintes"}</h3></div><button class="power-toggle ${state.on ? "active" : ""}" id="power-toggle" aria-label="Basculer l'alimentation"><span></span></button></article><article class="control-card"><span class="control-label">LUMINOSITÉ</span><div class="value-row"><h3>${Math.round((state.bri / 255) * 100)}%</h3><span>INTENSITÉ</span></div><input id="brightness" type="range" min="1" max="255" value="${state.bri}" ${connectionState !== "connected" ? "disabled" : ""} /></article><article class="control-card color-card"><span class="control-label">COULEUR ACTUELLE</span><div class="color-preview"><span></span><strong>Orange solaire</strong></div></article></div>
-      <div class="effect-panel"><span class="control-label">EFFET WLED</span><select id="effect" ${connectionState !== "connected" ? "disabled" : ""}>${effects.map(effect => `<option value="${effect.id}" ${state.seg[0]?.fx === effect.id ? "selected" : ""}>${effect.label}</option>`).join("")}</select></div>
+      <div class="effect-panel"><span class="control-label">EFFET WLED</span><select id="effect" ${connectionState !== "connected" ? "disabled" : ""}>${effects.map(effect => `<option value="${effect.id}" ${state.seg[0]?.fx === effect.id ? "selected" : ""}>${effect.label}</option>`).join("")}</select><label class="mini-control">COULEUR<input id="color-picker" type="color" value="${firstColor()}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label class="mini-control">VITESSE<input id="effect-speed" type="range" min="0" max="255" value="${state.seg[0]?.sx ?? 128}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label class="mini-control">INTENSITÉ<input id="effect-intensity" type="range" min="0" max="255" value="${state.seg[0]?.ix ?? 128}" ${connectionState !== "connected" ? "disabled" : ""} /></label></div>
       </section>
     </main>`;
 
@@ -57,6 +58,9 @@ function render() {
   document.querySelector<HTMLButtonElement>("#power-toggle")?.addEventListener("click", () => updateState({ on: !state.on }));
   document.querySelector<HTMLInputElement>("#brightness")?.addEventListener("input", (event) => updateState({ bri: Number((event.target as HTMLInputElement).value) }));
   document.querySelector<HTMLSelectElement>("#effect")?.addEventListener("change", (event) => { const fx = Number((event.target as HTMLSelectElement).value); state = { ...state, seg: [{ ...state.seg[0], fx }] }; updateState({ seg: state.seg }); });
+  document.querySelector<HTMLInputElement>("#color-picker")?.addEventListener("input", (event) => { const hex = (event.target as HTMLInputElement).value; const rgb = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16)); state = { ...state, seg: [{ ...state.seg[0], col: [rgb] }] }; updateState({ seg: state.seg }); });
+  document.querySelector<HTMLInputElement>("#effect-speed")?.addEventListener("input", (event) => { const sx = Number((event.target as HTMLInputElement).value); state = { ...state, seg: [{ ...state.seg[0], sx }] }; updateState({ seg: state.seg }); });
+  document.querySelector<HTMLInputElement>("#effect-intensity")?.addEventListener("input", (event) => { const ix = Number((event.target as HTMLInputElement).value); state = { ...state, seg: [{ ...state.seg[0], ix }] }; updateState({ seg: state.seg }); });
   document.querySelector<HTMLButtonElement>("#scan-button")?.addEventListener("click", scanNetwork);
   document.querySelector<HTMLButtonElement>("#detect-button")?.addEventListener("click", detectNetwork);
   document.querySelectorAll<HTMLButtonElement>("[data-device-url]").forEach(button => button.addEventListener("click", () => selectDevice(button.dataset.deviceUrl || "")));
