@@ -10,6 +10,7 @@ interface WledState {
 }
 interface SavedDevice { url: string; name: string; }
 interface DiscoveredDevice extends SavedDevice { version?: string; }
+interface Scene { id: string; name: string; state: WledState; }
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Application root not found");
@@ -24,8 +25,11 @@ let scanResults: DiscoveredDevice[] = [];
 let scanning = false;
 let scanMessage = "";
 let detectedPrefixes: string[] = [];
+let scenes: Scene[] = loadScenes();
 const effects = [{ id: 0, label: "Couleur fixe" }, { id: 1, label: "Blink" }, { id: 9, label: "Fire flicker" }, { id: 12, label: "Rainbow" }, { id: 45, label: "Plasma" }];
 function loadSavedDevices(): SavedDevice[] { try { const value = JSON.parse(localStorage.getItem("led2.devices") || "[]"); return Array.isArray(value) ? value.filter(item => item && typeof item.url === "string" && typeof item.name === "string") : []; } catch { return []; } }
+function loadScenes(): Scene[] { try { const value = JSON.parse(localStorage.getItem("led2.scenes") || "[]"); return Array.isArray(value) ? value : []; } catch { return []; } }
+function saveScenes() { localStorage.setItem("led2.scenes", JSON.stringify(scenes)); }
 function firstColor() { const color = state.seg[0]?.col?.[0] || [255, 98, 50]; return `#${color.map(value => value.toString(16).padStart(2, "0")).join("")}`; }
 
 function render() {
@@ -53,6 +57,7 @@ function render() {
         <div class="controls"><article class="control-card power-card"><div><span class="control-label">ALIMENTATION</span><h3>${state.on ? "Allumées" : "Éteintes"}</h3></div><button class="power-toggle ${state.on ? "active" : ""}" id="power-toggle" aria-label="Basculer l'alimentation"><span></span></button></article><article class="control-card"><span class="control-label">LUMINOSITÉ</span><div class="value-row"><h3>${Math.round((state.bri / 255) * 100)}%</h3><span>INTENSITÉ</span></div><input id="brightness" type="range" min="1" max="255" value="${state.bri}" ${connectionState !== "connected" ? "disabled" : ""} /></article><article class="control-card color-card"><span class="control-label">COULEUR ACTUELLE</span><div class="color-preview"><span></span><strong>Orange solaire</strong></div></article></div>
       <div class="effect-panel"><span class="control-label">EFFET WLED</span><select id="effect" ${connectionState !== "connected" ? "disabled" : ""}>${effects.map(effect => `<option value="${effect.id}" ${state.seg[0]?.fx === effect.id ? "selected" : ""}>${effect.label}</option>`).join("")}</select><label class="mini-control">COULEUR<input id="color-picker" type="color" value="${firstColor()}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label class="mini-control">VITESSE<input id="effect-speed" type="range" min="0" max="255" value="${state.seg[0]?.sx ?? 128}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label class="mini-control">INTENSITÉ<input id="effect-intensity" type="range" min="0" max="255" value="${state.seg[0]?.ix ?? 128}" ${connectionState !== "connected" ? "disabled" : ""} /></label></div>
       </section>
+      <section class="scenes-panel"><div class="section-title"><div><p class="eyebrow">MES SCÈNES</p><h2>Presets lumineux</h2></div><button id="save-scene" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>+ Enregistrer</button></div>${scenes.length ? `<div class="scene-list">${scenes.map(scene => `<article class="scene-item"><button class="scene-apply" data-scene-id="${scene.id}"><span class="scene-swatch" style="background:${firstColorFrom(scene.state)}"></span><span><strong>${scene.name}</strong><small>${scene.state.on ? "Allumé" : "Éteint"} · ${Math.round(scene.state.bri / 255 * 100)}%</small></span></button><button class="scene-delete" data-delete-scene="${scene.id}" aria-label="Supprimer ${scene.name}">×</button></article>`).join("")}</div>` : `<p class="hint">Aucune scène enregistrée pour le moment.</p>`}</section>
     </main>`;
 
   document.querySelector<HTMLFormElement>("#connect-form")?.addEventListener("submit", connect);
@@ -66,7 +71,15 @@ function render() {
   document.querySelector<HTMLButtonElement>("#detect-button")?.addEventListener("click", detectNetwork);
   document.querySelectorAll<HTMLButtonElement>("[data-device-url]").forEach(button => button.addEventListener("click", () => selectDevice(button.dataset.deviceUrl || "")));
   document.querySelectorAll<HTMLButtonElement>("[data-saved-url]").forEach(button => button.addEventListener("click", () => selectDevice(button.dataset.savedUrl || "")));
+  document.querySelector<HTMLButtonElement>("#save-scene")?.addEventListener("click", saveCurrentScene);
+  document.querySelectorAll<HTMLButtonElement>("[data-scene-id]").forEach(button => button.addEventListener("click", () => applyScene(button.dataset.sceneId || "")));
+  document.querySelectorAll<HTMLButtonElement>("[data-delete-scene]").forEach(button => button.addEventListener("click", () => deleteScene(button.dataset.deleteScene || "")));
 }
+
+function firstColorFrom(sceneState: WledState) { const color = sceneState.seg[0]?.col?.[0] || [255, 98, 50]; return `rgb(${color.join(",")})`; }
+function saveCurrentScene() { const name = window.prompt("Nom de la scène", `Scène ${scenes.length + 1}`)?.trim(); if (!name) return; scenes = [{ id: crypto.randomUUID(), name, state: structuredClone(state) }, ...scenes].slice(0, 20); saveScenes(); render(); }
+function applyScene(id: string) { const scene = scenes.find(item => item.id === id); if (!scene) return; state = structuredClone(scene.state); render(); updateState(state); }
+function deleteScene(id: string) { scenes = scenes.filter(scene => scene.id !== id); saveScenes(); render(); }
 
 function selectDevice(url: string) { baseUrl = url; const input = document.querySelector<HTMLInputElement>("#device-url"); if (input) input.value = url; connect(new Event("submit") as SubmitEvent); }
 

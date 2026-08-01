@@ -18,4 +18,12 @@
 .mini-control { display: flex; align-items: center; gap: 8px; color: #738398; font: 9px 'DM Mono', monospace; letter-spacing: .12em; }
 .mini-control input[type=color] { width: 30px; height: 30px; padding: 2px; border: 1px solid #2a3d51; background: #091523; border-radius: 7px; }
 .mini-control input[type=range] { width: 90px; margin: 0; }
+.scenes-panel { margin-top: 24px; padding: 22px; border: 1px solid #243547; background: rgba(13, 26, 41, .74); border-radius: 18px; }
+.scenes-panel h2 { margin-bottom: 0; }
+.scene-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 9px; margin-top: 18px; }
+.scene-item { display: flex; align-items: center; gap: 6px; padding: 8px; background: #0c1b2a; border: 1px solid #243b51; border-radius: 10px; }
+.scene-apply { display: flex; align-items: center; gap: 10px; flex: 1; color: #e7edf5; text-align: left; background: transparent; }
+.scene-apply strong, .scene-apply small { display: block; } .scene-apply small { margin-top: 3px; color: #6e8094; font: 10px 'DM Mono', monospace; }
+.scene-swatch { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 15px currentColor; }
+.scene-delete { color: #718398; background: transparent; font-size: 18px; } .scene-delete:hover { color: #ef927d; }
 @media (max-width: 720px) { .scan-row { align-items: stretch; flex-direction: column; } .scan-row input { max-width: none; } }
