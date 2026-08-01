@@ -27,6 +27,9 @@ let scanMessage = "";
 let detectedPrefixes: string[] = [];
 let scenes: Scene[] = loadScenes();
 let groupMessage = "";
+const TOTAL_ZONES = 97;
+let zoneState = Array.from({ length: TOTAL_ZONES }, () => true);
+let zonesOpen = false;
 const effects = [{ id: 0, label: "Couleur fixe" }, { id: 1, label: "Blink" }, { id: 9, label: "Fire flicker" }, { id: 12, label: "Rainbow" }, { id: 45, label: "Plasma" }];
 function loadSavedDevices(): SavedDevice[] { try { const value = JSON.parse(localStorage.getItem("led2.devices") || "[]"); return Array.isArray(value) ? value.filter(item => item && typeof item.url === "string" && typeof item.name === "string") : []; } catch { return []; } }
 function loadScenes(): Scene[] { try { const value = JSON.parse(localStorage.getItem("led2.scenes") || "[]"); return Array.isArray(value) ? value : []; } catch { return []; } }
@@ -53,6 +56,7 @@ function render() {
       </section>
       <div class="device-tools"><div><p class="eyebrow">DÉCOUVERTE LOCALE</p><h3>Appareils sur le réseau</h3><p class="hint">LED2 tente d’identifier la forme de votre réseau avant de scanner les adresses.</p></div><div class="scan-row"><input id="network-prefix" type="text" value="${detectedPrefixes[0] || "192.168.1"}" aria-label="Préfixe réseau" /><button id="detect-button" class="secondary-button">Détecter</button><button id="scan-button" class="secondary-button">${scanning ? "Scan en cours…" : "Scanner"}</button></div>${scanMessage ? `<p class="hint">${scanMessage}</p>` : ""}${scanResults.length ? `<div class="device-list">${scanResults.map(device => `<button class="device-item" data-device-url="${device.url}"><span class="device-icon">✦</span><span><strong>${device.name}</strong><small>${device.url}</small></span><span>→</span></button>`).join("")}</div>` : ""}</div>
       ${savedDevices.length ? `<div class="saved-devices"><p class="eyebrow">MES APPAREILS</p>${savedDevices.map(device => `<button class="saved-device" data-saved-url="${device.url}"><span>${device.name}</span><small>${device.url}</small></button>`).join("")}</div>` : ""}
+      <section class="zones-panel"><div class="section-title"><div><p class="eyebrow">ZONES</p><h2>${TOTAL_ZONES} zones LED</h2></div><button id="zones-toggle" class="secondary-button">${zonesOpen ? "Réduire" : "Afficher"}</button></div>${zonesOpen ? `<div class="zone-actions"><button id="zones-all">Tout</button><button id="zones-none">Rien</button><button id="zones-pattern">1 sur 2</button><span>${zoneState.filter(Boolean).length} sélectionnées</span></div><div class="zone-grid">${zoneState.map((active, index) => `<button class="zone-cell ${active ? "active" : ""}" data-zone="${index}">${index + 1}</button>`).join("")}</div><button id="zones-apply" class="primary-wide" ${connectionState !== "connected" ? "disabled" : ""}>Appliquer la sélection</button>` : ""}</section>
       <section class="dashboard ${connectionState !== "connected" ? "muted" : ""}">
         <div class="section-title"><div><p class="eyebrow">ESPACE DE CONTRÔLE</p><h2>${deviceName}</h2></div><span class="locked">${connectionState === "connected" ? "ACTIF" : "EN ATTENTE"}</span></div>
         <div class="controls"><article class="control-card power-card"><div><span class="control-label">ALIMENTATION</span><h3>${state.on ? "Allumées" : "Éteintes"}</h3></div><button class="power-toggle ${state.on ? "active" : ""}" id="power-toggle" aria-label="Basculer l'alimentation"><span></span></button></article><article class="control-card"><span class="control-label">LUMINOSITÉ</span><div class="value-row"><h3>${Math.round((state.bri / 255) * 100)}%</h3><span>INTENSITÉ</span></div><input id="brightness" type="range" min="1" max="255" value="${state.bri}" ${connectionState !== "connected" ? "disabled" : ""} /></article><article class="control-card color-card"><span class="control-label">COULEUR ACTUELLE</span><div class="color-preview"><span></span><strong>Orange solaire</strong></div></article></div>
@@ -76,6 +80,12 @@ function render() {
   document.querySelectorAll<HTMLButtonElement>("[data-scene-id]").forEach(button => button.addEventListener("click", () => applyScene(button.dataset.sceneId || "")));
   document.querySelectorAll<HTMLButtonElement>("[data-delete-scene]").forEach(button => button.addEventListener("click", () => deleteScene(button.dataset.deleteScene || "")));
   document.querySelectorAll<HTMLButtonElement>("[data-group-scene-id]").forEach(button => button.addEventListener("click", () => applySceneToAll(button.dataset.groupSceneId || "")));
+  document.querySelector<HTMLButtonElement>("#zones-toggle")?.addEventListener("click", () => { zonesOpen = !zonesOpen; render(); });
+  document.querySelectorAll<HTMLButtonElement>("[data-zone]").forEach(button => button.addEventListener("click", () => { const index = Number(button.dataset.zone); zoneState[index] = !zoneState[index]; render(); }));
+  document.querySelector<HTMLButtonElement>("#zones-all")?.addEventListener("click", () => { zoneState = zoneState.map(() => true); render(); });
+  document.querySelector<HTMLButtonElement>("#zones-none")?.addEventListener("click", () => { zoneState = zoneState.map(() => false); render(); });
+  document.querySelector<HTMLButtonElement>("#zones-pattern")?.addEventListener("click", () => { zoneState = zoneState.map((_, index) => index % 2 === 0); render(); });
+  document.querySelector<HTMLButtonElement>("#zones-apply")?.addEventListener("click", applyZones);
 }
 
 function firstColorFrom(sceneState: WledState) { const color = sceneState.seg[0]?.col?.[0] || [255, 98, 50]; return `rgb(${color.join(",")})`; }
@@ -83,6 +93,7 @@ function saveCurrentScene() { const name = window.prompt("Nom de la scène", `Sc
 function applyScene(id: string) { const scene = scenes.find(item => item.id === id); if (!scene) return; state = structuredClone(scene.state); render(); updateState(state); }
 function deleteScene(id: string) { scenes = scenes.filter(scene => scene.id !== id); saveScenes(); render(); }
 async function applySceneToAll(id: string) { const scene = scenes.find(item => item.id === id); if (!scene || savedDevices.length < 2) return; groupMessage = "Application de la scène sur les appareils…"; render(); const results = await Promise.allSettled(savedDevices.map(device => fetch(`${device.url}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scene.state), signal: AbortSignal.timeout(5000) }))); const success = results.filter(result => result.status === "fulfilled" && result.value.ok).length; groupMessage = `${success} / ${savedDevices.length} appareil(s) mis à jour.`; render(); }
+async function applyZones() { if (connectionState !== "connected") return; const segments: Array<{ start: number; stop: number; fx: number }> = []; let start = -1; for (let index = 0; index <= TOTAL_ZONES; index++) { if (index < TOTAL_ZONES && zoneState[index] && start < 0) start = index; if ((index === TOTAL_ZONES || !zoneState[index]) && start >= 0) { segments.push({ start: start * 2, stop: index * 2, fx: 0 }); start = -1; } } await updateState({ seg: segments.map((segment, id) => ({ id, ...segment, sx: 128, ix: 128, col: [[255, 98, 50]] })) }); }
 
 function selectDevice(url: string) { baseUrl = url; const input = document.querySelector<HTMLInputElement>("#device-url"); if (input) input.value = url; connect(new Event("submit") as SubmitEvent); }
 

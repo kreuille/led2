@@ -28,4 +28,7 @@
 .scene-delete { color: #718398; background: transparent; font-size: 18px; } .scene-delete:hover { color: #ef927d; }
 .scene-group { padding: 6px 8px; color: #f4b092; background: #172a3d; border: 1px solid #375069; border-radius: 6px; font: 9px 'DM Mono', monospace; } .scene-group:disabled { opacity: .35; cursor: not-allowed; }
 .group-message { margin: -10px 0 15px; color: #86d5a8; font: 11px 'DM Mono', monospace; }
+.zones-panel { margin-top: 24px; padding: 22px; border: 1px solid #243547; background: rgba(13, 26, 41, .74); border-radius: 18px; } .zones-panel h2 { margin-bottom: 0; }
+.zone-actions { display: flex; align-items: center; gap: 12px; margin: 18px 0 12px; color: #718398; font: 10px 'DM Mono', monospace; } .zone-actions button { color: #f4b092; background: transparent; font: inherit; } .zone-actions span { margin-left: auto; }
+.zone-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; max-height: 260px; overflow: auto; } .zone-cell { aspect-ratio: 1; color: #718398; background: #1c2d3f; border: 1px solid transparent; border-radius: 3px; font: 9px 'DM Mono', monospace; } .zone-cell.active { color: #fff; background: #d77657; border-color: #ffb08e; box-shadow: 0 0 8px #b8574a; } .primary-wide { width: 100%; margin-top: 14px; padding: 12px; color: #1a1620; background: #ffad83; border-radius: 9px; font-weight: 700; } .primary-wide:disabled { opacity: .35; }
 @media (max-width: 720px) { .scan-row { align-items: stretch; flex-direction: column; } .scan-row input { max-width: none; } }
