@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "npm run build && node scripts/validate.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {

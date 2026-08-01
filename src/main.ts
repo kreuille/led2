@@ -19,12 +19,13 @@ let baseUrl = "";
 let connectionState: ConnectionState = "idle";
 let deviceName = "Aucun appareil connecté";
 let state: WledState = { on: false, bri: 128, seg: [{ col: [[255, 98, 50]], fx: 0, sx: 128, ix: 128 }] };
-let savedDevices: SavedDevice[] = JSON.parse(localStorage.getItem("led2.devices") || "[]");
+let savedDevices: SavedDevice[] = loadSavedDevices();
 let scanResults: DiscoveredDevice[] = [];
 let scanning = false;
 let scanMessage = "";
 let detectedPrefixes: string[] = [];
 const effects = [{ id: 0, label: "Couleur fixe" }, { id: 1, label: "Blink" }, { id: 9, label: "Fire flicker" }, { id: 12, label: "Rainbow" }, { id: 45, label: "Plasma" }];
+function loadSavedDevices(): SavedDevice[] { try { const value = JSON.parse(localStorage.getItem("led2.devices") || "[]"); return Array.isArray(value) ? value.filter(item => item && typeof item.url === "string" && typeof item.name === "string") : []; } catch { return []; } }
 function firstColor() { const color = state.seg[0]?.col?.[0] || [255, 98, 50]; return `#${color.map(value => value.toString(16).padStart(2, "0")).join("")}`; }
 
 function render() {
@@ -133,7 +134,7 @@ async function updateState(patch: Partial<WledState>) {
   state = { ...state, ...patch };
   render();
   if (connectionState !== "connected") return;
-  try { await fetch(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }); }
+  try { const response = await fetch(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error("WLED rejected state update"); }
   catch { connectionState = "error"; render(); }
 }
 
