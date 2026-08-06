@@ -1,6 +1,8 @@
 import "./style.css";
 import "./scan.css";
 
+if ("serviceWorker" in navigator) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
+
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
 interface WledState {
