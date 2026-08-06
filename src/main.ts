@@ -1,5 +1,6 @@
 import "./style.css";
 import "./scan.css";
+import "./v34.css";
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
 
@@ -58,7 +59,7 @@ function render() {
   root.innerHTML = `
     <main class="shell">
       <header class="topbar">
-        <div class="brand"><span class="brand-mark">✦</span><div><strong>LED2</strong><small>WLED control studio</small></div></div>
+        <div class="brand"><span class="brand-mark">✦</span><div><strong>WLED</strong><small>V34 MATRIX · LED2 PWA</small></div></div>
         <div class="connection-pill ${statusClass}"><span class="status-dot"></span>${statusLabel}</div>
       </header>
       <section class="hero">
@@ -81,10 +82,12 @@ function render() {
       <div class="effect-panel"><span class="control-label">EFFET WLED ${isMatrixMode ? "· indisponible en Matrix" : ""}</span><input id="effect-search" class="effect-search" type="search" value="${effectSearch}" placeholder="Rechercher un effet" /><select id="effect" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""}>${effects.filter(effect => effect.label.toLowerCase().includes(effectSearch.toLowerCase())).map(effect => `<option value="${effect.id}" ${state.seg[0]?.fx === effect.id ? "selected" : ""}>${effect.label}</option>`).join("")}</select><label class="mini-control">COULEUR<input id="color-picker" type="color" value="${firstColor()}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label class="mini-control">VITESSE<input id="effect-speed" type="range" min="0" max="255" value="${state.seg[0]?.sx ?? 128}" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""} /></label><label class="mini-control">INTENSITÉ<input id="effect-intensity" type="range" min="0" max="255" value="${state.seg[0]?.ix ?? 128}" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""} /></label></div>
       </section>
       <section class="scenes-panel"><div class="section-title"><div><p class="eyebrow">MES SCÈNES</p><h2>Presets lumineux</h2></div><button id="save-scene" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>+ Enregistrer</button></div>${groupMessage ? `<p class="group-message">${groupMessage}</p>` : ""}${scenes.length ? `<div class="scene-list">${scenes.map(scene => `<article class="scene-item"><button class="scene-apply" data-scene-id="${scene.id}"><span class="scene-swatch" style="background:${firstColorFrom(scene.state)}"></span><span><strong>${scene.name}</strong><small>${scene.state.on ? "Allumé" : "Éteint"} · ${Math.round(scene.state.bri / 255 * 100)}%</small></span></button><button class="scene-group" data-group-scene-id="${scene.id}" ${savedDevices.length < 2 ? "disabled" : ""} aria-label="Appliquer ${scene.name} à tous">Tous</button><button class="scene-delete" data-delete-scene="${scene.id}" aria-label="Supprimer ${scene.name}">×</button></article>`).join("")}</div>` : `<p class="hint">Aucune scène enregistrée pour le moment.</p>`}</section>
+      <button id="master-power" class="master-power ${state.on ? "active" : ""}" aria-label="Alimentation générale">⏻</button>
     </main>`;
 
   document.querySelector<HTMLFormElement>("#connect-form")?.addEventListener("submit", connect);
   document.querySelector<HTMLButtonElement>("#power-toggle")?.addEventListener("click", () => updateState({ on: !state.on }));
+  document.querySelector<HTMLButtonElement>("#master-power")?.addEventListener("click", () => updateState({ on: !state.on }));
   document.querySelector<HTMLInputElement>("#brightness")?.addEventListener("input", (event) => updateState({ bri: Number((event.target as HTMLInputElement).value) }));
   document.querySelector<HTMLInputElement>("#effect-search")?.addEventListener("input", event => { effectSearch = (event.target as HTMLInputElement).value; render(); });
   document.querySelector<HTMLSelectElement>("#effect")?.addEventListener("change", event => updateEffect("fx", Number((event.target as HTMLSelectElement).value)));
