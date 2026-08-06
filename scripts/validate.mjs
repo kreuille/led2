@@ -7,7 +7,7 @@ if (missing.length) throw new Error(`Fichiers manquants : ${missing.join(", ")}`
 const html = readFileSync("dist/index.html", "utf8");
 if (!html.includes("LED2") || !html.includes("assets/")) throw new Error("Le build ne contient pas l'application attendue");
 const manifest = JSON.parse(readFileSync("dist/manifest.webmanifest", "utf8"));
-if (manifest.display !== "standalone" || manifest.start_url !== "/led2/") throw new Error("Le manifeste PWA est invalide");
+if (manifest.display !== "standalone" || !manifest.start_url.startsWith("/led2/") || !manifest.icons.some(icon => icon.sizes === "192x192") || !manifest.icons.some(icon => icon.sizes === "512x512")) throw new Error("Le manifeste PWA est invalide");
 const source = readFileSync("src/main.ts", "utf8");
 for (const feature of ["applyZones", "isMatrixMode", "fetchEffectsList", "useWledPreset", "fusionEnabled"]) {
   if (!source.includes(feature)) throw new Error(`Fonction WLED manquante : ${feature}`);

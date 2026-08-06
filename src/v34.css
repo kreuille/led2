@@ -8,16 +8,17 @@ body { background: radial-gradient(circle at 50% -20%, #1e293b 0, #0f172a 48%); 
 .connection-pill { padding: 7px 10px; font-size: 9px; }
 .hero { display: none; }
 .topbar { order: 0; }
-.connect-card { order: 1; }
-.master-brightness { order: 2; }
-.wled-presets { order: 3; }
-.zones-panel { order: 4; }
-.white-panel { order: 5; }
-.dashboard { order: 6; }
-.scenes-panel { order: 7; }
-.device-tools { order: 8; }
-.saved-devices { order: 9; }
-.master-power { order: 10; }
+.install-banner { order: 1; }
+.connect-card { order: 2; }
+.master-brightness { order: 3; }
+.wled-presets { order: 4; }
+.zones-panel { order: 5; }
+.white-panel { order: 6; }
+.dashboard { order: 7; }
+.scenes-panel { order: 8; }
+.device-tools { order: 9; }
+.saved-devices { order: 10; }
+.master-power { order: 11; }
 .connect-card, .device-tools, .saved-devices, .wled-presets, .zones-panel, .white-panel, .dashboard, .scenes-panel { margin-top: 12px; padding: 15px; background: rgba(30,41,59,.62); border: 1px solid rgba(255,255,255,.06); border-radius: 20px; backdrop-filter: blur(12px); }
 .connect-card .card-heading { display: none; }
 .connect-form label { font-size: 9px; }
@@ -30,6 +31,9 @@ body { background: radial-gradient(circle at 50% -20%, #1e293b 0, #0f172a 48%); 
 .device-tools > div:first-child .hint { display: none; }
 .scan-row { margin-top: 9px; }
 .secondary-button { min-height: 34px; background: rgba(30,64,175,.28); border-color: rgba(59,130,246,.42); color: #93c5fd; }
+.install-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 3px; padding: 10px 12px; background: linear-gradient(90deg,rgba(37,99,235,.2),rgba(126,34,206,.15)); border: 1px solid rgba(96,165,250,.35); border-radius: 12px; }
+.install-banner strong, .install-banner span { display: block; } .install-banner strong { font-size: 11px; color: #dbeafe; } .install-banner span { margin-top: 2px; color: #94a3b8; font: 9px 'DM Mono', monospace; }
+@media (display-mode: standalone) { .install-banner { display: none; } }
 .master-brightness { margin-top: 12px; padding: 13px 15px; background: rgba(15,23,42,.58); border: 1px solid #1e293b; border-radius: 12px; }
 .master-brightness div { display: flex; justify-content: space-between; color: #94a3b8; font: 700 10px 'DM Mono', monospace; }
 .master-brightness strong { color: #f8fafc; }

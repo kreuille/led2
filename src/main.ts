@@ -6,6 +6,7 @@ import iro from "@jaames/iro";
 if ("serviceWorker" in navigator) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
+type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
 interface WledSegment {
   id?: number; start?: number; stop?: number; grp?: number; spc?: number; on?: boolean;
@@ -50,6 +51,11 @@ let currentColors = { r: 255, g: 98, b: 50, wr: 255, wg: 150, wb: 0 };
 let whiteBrightness = 128;
 let whiteTemperature = 50;
 let rgbBrightness = 128;
+let deferredInstallPrompt: InstallPrompt | null = null;
+let installMessage = "";
+
+window.addEventListener("beforeinstallprompt", event => { event.preventDefault(); deferredInstallPrompt = event as InstallPrompt; render(); });
+window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; installMessage = "LED2 est installée."; render(); });
 function loadSavedDevices(): SavedDevice[] { try { const value = JSON.parse(localStorage.getItem("led2.devices") || "[]"); return Array.isArray(value) ? value.filter(item => item && typeof item.url === "string" && typeof item.name === "string") : []; } catch { return []; } }
 function loadScenes(): Scene[] { try { const value = JSON.parse(localStorage.getItem("led2.scenes") || "[]"); return Array.isArray(value) ? value : []; } catch { return []; } }
 function saveScenes() { localStorage.setItem("led2.scenes", JSON.stringify(scenes)); }
@@ -64,6 +70,7 @@ function render() {
         <div class="brand"><span class="brand-mark">✦</span><div><strong>WLED</strong><small>V34 MATRIX · LED2 PWA</small></div></div>
         <div class="connection-pill ${statusClass}"><span class="status-dot"></span>${statusLabel}</div>
       </header>
+      <section class="install-banner"><div><strong>LED2 PWA</strong><span>${installMessage || (deferredInstallPrompt ? "Installation disponible sur cet appareil" : "Installer comme une application")}</span></div><button id="install-app" class="secondary-button">Installer</button></section>
       <section class="master-brightness"><div><span>MASTER LUMINOSITÉ</span><strong>${Math.round(state.bri / 2.55)}%</strong></div><input id="master-brightness" type="range" min="0" max="255" value="${state.bri}" ${connectionState !== "connected" ? "disabled" : ""} /></section>
       <section class="hero">
         <div><p class="eyebrow">NOUVELLE GÉNÉRATION</p><h1>Donnez vie à<br /><em>vos lumières.</em></h1><p class="intro">Une interface claire et réactive pour piloter vos appareils WLED, où que vous soyez.</p></div>
@@ -91,6 +98,7 @@ function render() {
   document.querySelector<HTMLFormElement>("#connect-form")?.addEventListener("submit", connect);
   document.querySelector<HTMLButtonElement>("#power-toggle")?.addEventListener("click", () => updateState({ on: !state.on }));
   document.querySelector<HTMLButtonElement>("#master-power")?.addEventListener("click", () => updateState({ on: !state.on }));
+  document.querySelector<HTMLButtonElement>("#install-app")?.addEventListener("click", installApp);
   document.querySelector<HTMLInputElement>("#brightness")?.addEventListener("input", (event) => updateState({ bri: Number((event.target as HTMLInputElement).value) }));
   document.querySelector<HTMLInputElement>("#master-brightness")?.addEventListener("input", event => updateState({ bri: Number((event.target as HTMLInputElement).value) }));
   document.querySelector<HTMLInputElement>("#effect-search")?.addEventListener("input", event => { effectSearch = (event.target as HTMLInputElement).value; render(); });
@@ -119,6 +127,15 @@ function render() {
   document.querySelector<HTMLInputElement>("#rgb-level")?.addEventListener("input", event => { rgbBrightness = Number((event.target as HTMLInputElement).value); updateRgbBrightness(); });
   document.querySelector<HTMLInputElement>("#fusion-toggle")?.addEventListener("change", event => { fusionEnabled = (event.target as HTMLInputElement).checked; activateChannel(activeChannel); });
   initializeColorWheel();
+}
+
+async function installApp() {
+  if (!deferredInstallPrompt) { installMessage = "Utilisez le menu du navigateur puis « Installer l’application » ou « Ajouter à l’écran d’accueil »."; render(); return; }
+  await deferredInstallPrompt.prompt();
+  const choice = await deferredInstallPrompt.userChoice;
+  installMessage = choice.outcome === "accepted" ? "Installation lancée." : "Installation annulée.";
+  deferredInstallPrompt = null;
+  render();
 }
 
 function firstColorFrom(sceneState: WledState) { const color = sceneState.seg[0]?.col?.[0] || [255, 98, 50]; return `rgb(${color.join(",")})`; }
