@@ -15,6 +15,10 @@ La version actuelle permet de connecter un appareil, scanner une plage réseau, 
 
 Les scènes enregistrées peuvent aussi être envoyées en parallèle à tous les appareils mémorisés.
 
+La version PWA reprend maintenant le moteur WLED V34 Matrix fourni : 97 zones/194 LED, modes Segments et Matrix HD, canaux RGB et blanc indépendants, fusion, presets matériels, liste dynamique des effets et réglages vitesse/intensité.
+
+Par sécurité, aucun token Home Assistant n'est intégré au JavaScript public. Toute future connexion Home Assistant devra passer par une configuration locale ou un proxy authentifié.
+
 Les détails de la découverte réseau sont décrits dans [`docs/NETWORK.md`](docs/NETWORK.md).
 
 Le scan réseau depuis GitHub Pages peut être limité par le navigateur (HTTPS vers des appareils locaux en HTTP) ou par la configuration CORS de WLED. Pour un usage local complet, lancer LED2 avec `npm run dev` sur le même réseau que les appareils.
