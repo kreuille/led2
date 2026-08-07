@@ -7,6 +7,7 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register(`${import.met
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
+type LocalRequestInit = RequestInit & { targetAddressSpace?: "local" };
 
 interface WledSegment {
   id?: number; start?: number; stop?: number; grp?: number; spc?: number; on?: boolean;
@@ -33,7 +34,7 @@ let savedDevices: SavedDevice[] = loadSavedDevices();
 let scanResults: DiscoveredDevice[] = [];
 let scanning = false;
 let scanMessage = "";
-let detectedPrefixes: string[] = [];
+let detectedPrefixes: string[] = [...new Set(savedDevices.map(device => networkPrefixFrom(device.url)).filter((prefix): prefix is string => Boolean(prefix)))];
 let scenes: Scene[] = loadScenes();
 let groupMessage = "";
 const TOTAL_ZONES = 97;
@@ -61,6 +62,20 @@ function loadSavedDevices(): SavedDevice[] { try { const value = JSON.parse(loca
 function loadScenes(): Scene[] { try { const value = JSON.parse(localStorage.getItem("led2.scenes") || "[]"); return Array.isArray(value) ? value : []; } catch { return []; } }
 function saveScenes() { localStorage.setItem("led2.scenes", JSON.stringify(scenes)); }
 function firstColor() { const color = state.seg[0]?.col?.[0] || [255, 98, 50]; return `#${color.map(value => value.toString(16).padStart(2, "0")).join("")}`; }
+function fetchLocal(input: string, init: RequestInit = {}) { return fetch(input, { ...init, targetAddressSpace: "local" } as LocalRequestInit); }
+function networkPrefixFrom(value: string) {
+  const match = value.trim().match(/(?:^|\/\/)(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\.(\d{1,3}))?(?::\d+)?(?:\/|$)/) || value.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\.(\d{1,3}))?$/);
+  if (!match) return null;
+  const octets = match.slice(1, 5).filter(valuePart => valuePart !== undefined).map(Number);
+  if (octets.some(octet => octet < 0 || octet > 255)) return null;
+  const [a, b, c] = octets;
+  const isPrivate = a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  return isPrivate ? `${a}.${b}.${c}` : null;
+}
+function hostFrom(value: string) {
+  try { return new URL(value.includes("://") ? value : `http://${value}`).hostname; }
+  catch { return ""; }
+}
 
 function render() {
   const statusLabel = connectionState === "connected" ? "Connecté" : connectionState === "connecting" ? "Connexion…" : connectionState === "error" ? "Connexion impossible" : "Prêt à connecter";
@@ -143,8 +158,8 @@ function firstColorFrom(sceneState: WledState) { const color = sceneState.seg[0]
 function saveCurrentScene() { const name = window.prompt("Nom de la scène", `Scène ${scenes.length + 1}`)?.trim(); if (!name) return; scenes = [{ id: crypto.randomUUID(), name, state: structuredClone(state) }, ...scenes].slice(0, 20); saveScenes(); render(); }
 function applyScene(id: string) { const scene = scenes.find(item => item.id === id); if (!scene) return; state = structuredClone(scene.state); render(); updateState(state); }
 function deleteScene(id: string) { scenes = scenes.filter(scene => scene.id !== id); saveScenes(); render(); }
-async function applySceneToAll(id: string) { const scene = scenes.find(item => item.id === id); if (!scene || savedDevices.length < 2) return; groupMessage = "Application de la scène sur les appareils…"; render(); const results = await Promise.allSettled(savedDevices.map(device => fetch(`${device.url}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scene.state), signal: AbortSignal.timeout(5000) }))); const success = results.filter(result => result.status === "fulfilled" && result.value.ok).length; groupMessage = `${success} / ${savedDevices.length} appareil(s) mis à jour.`; render(); }
-async function sendWledState(payload: unknown) { if (connectionState !== "connected") return false; const response = await fetch(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(`WLED state rejected: ${response.status}`); return true; }
+async function applySceneToAll(id: string) { const scene = scenes.find(item => item.id === id); if (!scene || savedDevices.length < 2) return; groupMessage = "Application de la scène sur les appareils…"; render(); const results = await Promise.allSettled(savedDevices.map(device => fetchLocal(`${device.url}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scene.state), signal: AbortSignal.timeout(5000) }))); const success = results.filter(result => result.status === "fulfilled" && result.value.ok).length; groupMessage = `${success} / ${savedDevices.length} appareil(s) mis à jour.`; render(); }
+async function sendWledState(payload: unknown) { if (connectionState !== "connected") return false; const response = await fetchLocal(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(`WLED state rejected: ${response.status}`); return true; }
 async function applyZones() {
   if (connectionState !== "connected") return;
   const groups: Array<{ s: number; e: number }> = [];
@@ -189,7 +204,7 @@ async function applyZones() {
   } catch { connectionState = "error"; groupMessage = "Échec de l’application des zones. Vérifiez la connexion WLED."; }
   render();
 }
-async function useWledPreset(id: number) { if (connectionState !== "connected") return; presetMessage = presetRecordMode ? `Enregistrement de la mémoire ${id}…` : `Chargement de la mémoire ${id}…`; render(); try { const payload = presetRecordMode ? { psave: id } : { ps: id }; const response = await fetch(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(); presetRecordMode = false; presetMessage = `Mémoire ${id} ${payload.psave ? "enregistrée" : "chargée"}.`; } catch { presetMessage = `Impossible de modifier la mémoire ${id}.`; } render(); }
+async function useWledPreset(id: number) { if (connectionState !== "connected") return; presetMessage = presetRecordMode ? `Enregistrement de la mémoire ${id}…` : `Chargement de la mémoire ${id}…`; render(); try { const payload = presetRecordMode ? { psave: id } : { ps: id }; const response = await fetchLocal(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(); presetRecordMode = false; presetMessage = `Mémoire ${id} ${payload.psave ? "enregistrée" : "chargée"}.`; } catch { presetMessage = `Impossible de modifier la mémoire ${id}.`; } render(); }
 function rgbToHex(r: number, g: number, b: number) { return [r, g, b].map(value => Math.round(Math.max(0, Math.min(255, value))).toString(16).padStart(2, "0")).join("").toUpperCase(); }
 async function activateChannel(channel: "rgb" | "white") {
   activeChannel = channel;
@@ -244,7 +259,7 @@ async function updateEffect(parameter: "fx" | "sx" | "ix", value: number) {
   if (segments.length) await sendWledState({ seg: segments });
 }
 async function fetchEffectsList() {
-  try { const response = await fetch(`${baseUrl}/json/effects`, { signal: AbortSignal.timeout(5000) }); if (!response.ok) return; const names = await response.json() as string[]; effects = names.map((label, id) => ({ id, label })); }
+  try { const response = await fetchLocal(`${baseUrl}/json/effects`, { signal: AbortSignal.timeout(5000) }); if (!response.ok) return; const names = await response.json() as string[]; effects = names.map((label, id) => ({ id, label })); }
   catch { effects = [{ id: 0, label: "Solid" }]; }
 }
 
@@ -253,21 +268,41 @@ function selectDevice(url: string) { baseUrl = url; const input = document.query
 function rememberDevice(device: SavedDevice) { savedDevices = [device, ...savedDevices.filter(item => item.url !== device.url)].slice(0, 12); localStorage.setItem("led2.devices", JSON.stringify(savedDevices)); }
 
 async function scanNetwork() {
-  const typedPrefix = document.querySelector<HTMLInputElement>("#network-prefix")?.value.trim().replace(/\.$/, "") || "";
-  if (!/^\d{1,3}(\.\d{1,3}){2}$/.test(typedPrefix)) { scanMessage = "Format attendu : 3 nombres, par exemple 192.168.1"; render(); return; }
-  scanning = true; scanResults = []; scanMessage = `Recherche sur ${typedPrefix}.x…`; render();
-  const found: DiscoveredDevice[] = [];
-  const candidates = Array.from({ length: 254 }, (_, index) => `${typedPrefix}.${index + 1}`);
+  const typedValue = document.querySelector<HTMLInputElement>("#network-prefix")?.value.trim().replace(/\.$/, "") || "";
+  const typedPrefix = networkPrefixFrom(typedValue);
+  if (!typedPrefix) { scanMessage = "Format réseau privé attendu, par exemple 192.168.68"; render(); return; }
+  detectedPrefixes = [typedPrefix, ...detectedPrefixes.filter(prefix => prefix !== typedPrefix)];
+  scanning = true; scanResults = []; scanMessage = `Autorisez l’accès au réseau local si le navigateur le demande. Recherche sur ${typedPrefix}.x…`; render();
+  const found = new Map<string, DiscoveredDevice>();
+  const knownHosts = [baseUrl, ...savedDevices.map(device => device.url)].map(hostFrom).filter(host => host.startsWith(`${typedPrefix}.`));
+  const candidates = [...new Set([...knownHosts, ...Array.from({ length: 254 }, (_, index) => `${typedPrefix}.${index + 1}`)])];
   for (let index = 0; index < candidates.length; index += 24) {
-    await Promise.all(candidates.slice(index, index + 24).map(async host => { try { const response = await fetch(`http://${host}/json/info`, { signal: AbortSignal.timeout(700) }); if (!response.ok) return; const info = await response.json() as { name?: string; ver?: string }; if (info.ver || info.name) found.push({ url: `http://${host}`, name: info.name || `WLED ${host}`, version: info.ver }); } catch { /* absent or inaccessible */ } }));
-    scanMessage = `${Math.min(index + 24, 254)} / 254 adresses vérifiées…`; render();
+    await Promise.all(candidates.slice(index, index + 24).map(async host => {
+      try {
+        const response = await fetchLocal(`http://${host}/json/info`, { signal: AbortSignal.timeout(900) });
+        if (!response.ok) return;
+        const info = await response.json() as { name?: string; ver?: string; brand?: string };
+        if (info.ver || info.name || info.brand === "WLED") found.set(host, { url: `http://${host}`, name: info.name || `WLED ${host}`, version: info.ver });
+      } catch { /* absent, permission refused or inaccessible */ }
+    }));
+    scanResults = [...found.values()];
+    scanMessage = `${Math.min(index + 24, candidates.length)} / ${candidates.length} adresses vérifiées…${found.size ? ` ${found.size} WLED trouvé(s).` : ""}`;
+    render();
   }
-  scanResults = found; scanning = false; scanMessage = found.length ? `${found.length} appareil(s) trouvé(s).` : "Aucun appareil trouvé. Vérifiez le préfixe et les permissions CORS de WLED."; render();
+  scanResults = [...found.values()];
+  scanning = false;
+  scanMessage = found.size ? `${found.size} appareil(s) WLED trouvé(s).` : "Aucun WLED détecté. Vérifiez l’autorisation d’accès au réseau local et le préfixe Wi-Fi.";
+  render();
 }
 
 async function detectNetwork() {
   scanMessage = "Détection de la forme du réseau…"; render();
   const prefixes = new Set<string>();
+  const typedPrefix = networkPrefixFrom(document.querySelector<HTMLInputElement>("#network-prefix")?.value || "");
+  if (typedPrefix) prefixes.add(typedPrefix);
+  const currentPrefix = networkPrefixFrom(baseUrl);
+  if (currentPrefix) prefixes.add(currentPrefix);
+  savedDevices.forEach(device => { const prefix = networkPrefixFrom(device.url); if (prefix) prefixes.add(prefix); });
   try {
     const connection = new RTCPeerConnection({ iceServers: [] });
     connection.createDataChannel("led2");
@@ -297,7 +332,7 @@ async function connect(event: SubmitEvent) {
   connectionState = "connecting";
   render();
   try {
-    const response = await fetch(`${baseUrl}/json/state`, { signal: AbortSignal.timeout(5000) });
+    const response = await fetchLocal(`${baseUrl}/json/state`, { signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error("Device unavailable");
     state = await response.json() as WledState;
     activeSegmentCount = state.seg?.length || 0;
@@ -305,10 +340,12 @@ async function connect(event: SubmitEvent) {
     const rgb = state.seg?.[0]?.col?.[0];
     if (rgb) currentColors = { ...currentColors, r: rgb[0] || 0, g: rgb[1] || 0, b: rgb[2] || 0 };
     await fetchEffectsList();
-    const info = await fetch(`${baseUrl}/json/info`, { signal: AbortSignal.timeout(5000) });
+    const info = await fetchLocal(`${baseUrl}/json/info`, { signal: AbortSignal.timeout(5000) });
     if (info.ok) deviceName = ((await info.json()) as { name?: string }).name || "Appareil WLED";
     connectionState = "connected";
     rememberDevice({ url: baseUrl, name: deviceName });
+    const connectedPrefix = networkPrefixFrom(baseUrl);
+    if (connectedPrefix) detectedPrefixes = [connectedPrefix, ...detectedPrefixes.filter(prefix => prefix !== connectedPrefix)];
   } catch {
     connectionState = "error";
   }
@@ -319,7 +356,7 @@ async function updateState(patch: Partial<WledState>) {
   state = { ...state, ...patch };
   render();
   if (connectionState !== "connected") return;
-  try { const response = await fetch(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error("WLED rejected state update"); }
+  try { const response = await fetchLocal(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error("WLED rejected state update"); }
   catch { connectionState = "error"; render(); }
 }
 
