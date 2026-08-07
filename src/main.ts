@@ -51,6 +51,7 @@ let currentColors = { r: 255, g: 98, b: 50, wr: 255, wg: 150, wb: 0 };
 let whiteBrightness = 128;
 let whiteTemperature = 50;
 let rgbBrightness = 128;
+let whiteUpdateTimer: number | undefined;
 let deferredInstallPrompt: InstallPrompt | null = null;
 let installMessage = "";
 
@@ -122,8 +123,8 @@ function render() {
   document.querySelector<HTMLButtonElement>("#zones-apply")?.addEventListener("click", applyZones);
   document.querySelector<HTMLButtonElement>("#preset-record")?.addEventListener("click", () => { presetRecordMode = !presetRecordMode; presetMessage = presetRecordMode ? "Choisissez une mémoire pour l’enregistrer." : ""; render(); });
   document.querySelectorAll<HTMLButtonElement>("[data-preset]").forEach(button => button.addEventListener("click", () => useWledPreset(Number(button.dataset.preset))));
-  document.querySelector<HTMLInputElement>("#white-level")?.addEventListener("input", event => { whiteBrightness = Number((event.target as HTMLInputElement).value); updateWhite(); });
-  document.querySelector<HTMLInputElement>("#white-temperature")?.addEventListener("input", event => { whiteTemperature = Number((event.target as HTMLInputElement).value); updateWhite(); });
+  document.querySelector<HTMLInputElement>("#white-level")?.addEventListener("input", event => { whiteBrightness = Number((event.target as HTMLInputElement).value); scheduleWhiteUpdate(); });
+  document.querySelector<HTMLInputElement>("#white-temperature")?.addEventListener("input", event => { whiteTemperature = Number((event.target as HTMLInputElement).value); scheduleWhiteUpdate(); });
   document.querySelector<HTMLInputElement>("#rgb-level")?.addEventListener("input", event => { rgbBrightness = Number((event.target as HTMLInputElement).value); updateRgbBrightness(); });
   document.querySelector<HTMLInputElement>("#fusion-toggle")?.addEventListener("change", event => { fusionEnabled = (event.target as HTMLInputElement).checked; activateChannel(activeChannel); });
   initializeColorWheel();
@@ -159,8 +160,8 @@ async function applyZones() {
       const segments: Array<Record<string, unknown>> = [];
       let id = 0;
       for (const group of groups) {
-        segments.push({ id: id++, start: group.s * 2, stop: group.e * 2, grp: 1, spc: 1, of: 0, on: fusionEnabled || activeChannel === "rgb", fx: 0, n: `Z${group.s}-RGB`, col: [[currentColors.r, currentColors.g, currentColors.b]] });
-        segments.push({ id: id++, start: group.s * 2 + 1, stop: group.e * 2 + 1, grp: 1, spc: 1, of: 0, on: fusionEnabled || activeChannel === "white", fx: 0, n: `Z${group.s}-W`, col: [[currentColors.wr, currentColors.wg, currentColors.wb]] });
+        segments.push({ id: id++, start: group.s * 2, stop: group.e * 2, grp: 1, spc: 1, of: 0, on: fusionEnabled || activeChannel === "rgb", bri: rgbBrightness, fx: 0, n: `Z${group.s}-RGB`, col: [[currentColors.r, currentColors.g, currentColors.b]] });
+        segments.push({ id: id++, start: group.s * 2 + 1, stop: group.e * 2 + 1, grp: 1, spc: 1, of: 0, on: fusionEnabled || activeChannel === "white", bri: whiteBrightness, fx: 0, n: `Z${group.s}-W`, col: [[currentColors.wr, currentColors.wg, currentColors.wb]] });
       }
       for (let clearId = id; clearId < 30; clearId++) segments.push({ id: clearId, stop: 0 });
       activeSegmentCount = id;
@@ -171,8 +172,8 @@ async function applyZones() {
       for (let id = 1; id < 30; id++) reset.push({ id, stop: 0 });
       await sendWledState({ seg: reset });
       const pixelList: Array<number | string> = [];
-      const rgb = rgbToHex(currentColors.r, currentColors.g, currentColors.b);
-      const white = rgbToHex(currentColors.wr, currentColors.wg, currentColors.wb);
+      const rgb = rgbToHex(currentColors.r * rgbBrightness / 255, currentColors.g * rgbBrightness / 255, currentColors.b * rgbBrightness / 255);
+      const white = rgbToHex(currentColors.wr * whiteBrightness / 255, currentColors.wg * whiteBrightness / 255, currentColors.wb * whiteBrightness / 255);
       for (let zone = 0; zone < TOTAL_ZONES; zone++) {
         const active = zoneState[zone];
         pixelList.push(zone * 2, active && (fusionEnabled || activeChannel === "rgb") ? rgb : "000000");
@@ -189,7 +190,7 @@ async function applyZones() {
   render();
 }
 async function useWledPreset(id: number) { if (connectionState !== "connected") return; presetMessage = presetRecordMode ? `Enregistrement de la mémoire ${id}…` : `Chargement de la mémoire ${id}…`; render(); try { const payload = presetRecordMode ? { psave: id } : { ps: id }; const response = await fetch(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(); presetRecordMode = false; presetMessage = `Mémoire ${id} ${payload.psave ? "enregistrée" : "chargée"}.`; } catch { presetMessage = `Impossible de modifier la mémoire ${id}.`; } render(); }
-function rgbToHex(r: number, g: number, b: number) { return [r, g, b].map(value => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0")).join("").toUpperCase(); }
+function rgbToHex(r: number, g: number, b: number) { return [r, g, b].map(value => Math.round(Math.max(0, Math.min(255, value))).toString(16).padStart(2, "0")).join("").toUpperCase(); }
 async function activateChannel(channel: "rgb" | "white") {
   activeChannel = channel;
   if (isMatrixMode) return applyZones();
@@ -218,6 +219,10 @@ async function updateRgbBrightness() {
   const segments = Array.from({ length: Math.ceil(activeSegmentCount / 2) }, (_, index) => ({ id: index * 2, bri: rgbBrightness }));
   if (segments.length) await sendWledState({ seg: segments });
 }
+function scheduleWhiteUpdate() {
+  if (whiteUpdateTimer !== undefined) window.clearTimeout(whiteUpdateTimer);
+  whiteUpdateTimer = window.setTimeout(() => { whiteUpdateTimer = undefined; void updateWhite(); }, 50);
+}
 async function updateWhite() {
   const p = whiteTemperature;
   const wr = p <= 50 ? Math.floor((p / 50) * 255) : 255;
@@ -225,8 +230,13 @@ async function updateWhite() {
   currentColors = { ...currentColors, wr, wg, wb: 0 };
   activeChannel = "white";
   if (isMatrixMode) return applyZones();
-  const segments = Array.from({ length: Math.floor(activeSegmentCount / 2) }, (_, index) => ({ id: index * 2 + 1, col: [[wr, wg, 0]], bri: whiteBrightness, fx: 0 }));
-  if (segments.length) await sendWledState({ seg: segments });
+  const segments = Array.from({ length: activeSegmentCount }, (_, id) => id % 2 === 1
+    ? { id, on: true, col: [[wr, wg, 0]], bri: whiteBrightness, fx: 0 }
+    : { id, on: fusionEnabled });
+  if (segments.length) {
+    try { await sendWledState({ seg: segments }); }
+    catch { connectionState = "error"; render(); }
+  }
 }
 async function updateEffect(parameter: "fx" | "sx" | "ix", value: number) {
   if (isMatrixMode) return;
