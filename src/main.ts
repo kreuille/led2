@@ -34,7 +34,7 @@ let savedDevices: SavedDevice[] = loadSavedDevices();
 let scanResults: DiscoveredDevice[] = [];
 let scanning = false;
 let scanMessage = "";
-let detectedPrefixes: string[] = [...new Set(savedDevices.map(device => networkPrefixFrom(device.url)).filter((prefix): prefix is string => Boolean(prefix)))];
+let detectedPrefixes: string[] = [...new Set([networkPrefixFrom(localStorage.getItem("led2.networkPrefix") || ""), ...savedDevices.map(device => networkPrefixFrom(device.url))].filter((prefix): prefix is string => Boolean(prefix)))];
 let scenes: Scene[] = loadScenes();
 let groupMessage = "";
 const TOTAL_ZONES = 97;
@@ -272,6 +272,7 @@ async function scanNetwork() {
   const typedPrefix = networkPrefixFrom(typedValue);
   if (!typedPrefix) { scanMessage = "Format réseau privé attendu, par exemple 192.168.68"; render(); return; }
   detectedPrefixes = [typedPrefix, ...detectedPrefixes.filter(prefix => prefix !== typedPrefix)];
+  localStorage.setItem("led2.networkPrefix", typedPrefix);
   scanning = true; scanResults = []; scanMessage = `Autorisez l’accès au réseau local si le navigateur le demande. Recherche sur ${typedPrefix}.x…`; render();
   const found = new Map<string, DiscoveredDevice>();
   const knownHosts = [baseUrl, ...savedDevices.map(device => device.url)].map(hostFrom).filter(host => host.startsWith(`${typedPrefix}.`));
@@ -316,6 +317,7 @@ async function detectNetwork() {
     connection.close();
   } catch { /* ICE discovery can be blocked by the browser */ }
   detectedPrefixes = [...prefixes];
+  if (detectedPrefixes[0]) localStorage.setItem("led2.networkPrefix", detectedPrefixes[0]);
   if (!detectedPrefixes.length) {
     scanMessage = "Le navigateur masque l’adresse locale. Renseignez le préfixe de votre routeur, par exemple 192.168.0, 192.168.1 ou 10.0.0.";
   } else {
@@ -345,7 +347,10 @@ async function connect(event: SubmitEvent) {
     connectionState = "connected";
     rememberDevice({ url: baseUrl, name: deviceName });
     const connectedPrefix = networkPrefixFrom(baseUrl);
-    if (connectedPrefix) detectedPrefixes = [connectedPrefix, ...detectedPrefixes.filter(prefix => prefix !== connectedPrefix)];
+    if (connectedPrefix) {
+      detectedPrefixes = [connectedPrefix, ...detectedPrefixes.filter(prefix => prefix !== connectedPrefix)];
+      localStorage.setItem("led2.networkPrefix", connectedPrefix);
+    }
   } catch {
     connectionState = "error";
   }

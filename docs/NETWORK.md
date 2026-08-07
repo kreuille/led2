@@ -6,6 +6,8 @@ LED2 propose d'abord les préfixes déduits des appareils déjà mémorisés et 
 
 Dans ce cas, saisir manuellement le préfixe de trois octets du réseau, par exemple `192.168.0`, `192.168.1` ou `10.0.0`, puis lancer le scan. LED2 vérifie les adresses `1` à `254` et appelle `/json/info` pour reconnaître WLED.
 
+Le préfixe validé est mémorisé dans le navigateur et sera proposé automatiquement lors des utilisations suivantes.
+
 ## Conditions de fonctionnement
 
 - l'appareil et le navigateur doivent être sur le même réseau local ;
