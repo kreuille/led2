@@ -6,6 +6,8 @@ if (missing.length) throw new Error(`Fichiers manquants : ${missing.join(", ")}`
 
 const html = readFileSync("dist/index.html", "utf8");
 if (!html.includes("LED2") || !html.includes("assets/")) throw new Error("Le build ne contient pas l'application attendue");
+const wledHtml = readFileSync("dist/led2.htm", "utf8");
+if (!wledHtml.includes("LED2") || !wledHtml.includes("/json/state") || wledHtml.includes("/led2/assets/")) throw new Error("La version Wi-Fi autonome WLED est invalide");
 const manifest = JSON.parse(readFileSync("dist/manifest.webmanifest", "utf8"));
 if (manifest.display !== "standalone" || !manifest.start_url.startsWith("/led2/") || !manifest.icons.some(icon => icon.sizes === "192x192") || !manifest.icons.some(icon => icon.sizes === "512x512")) throw new Error("Le manifeste PWA est invalide");
 const source = readFileSync("src/main.ts", "utf8");

@@ -3,7 +3,8 @@ import "./scan.css";
 import "./v34.css";
 import iro from "@jaames/iro";
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
+const embeddedWledMode = /^\/led2\.html?$/i.test(window.location.pathname);
+if ("serviceWorker" in navigator && !embeddedWledMode) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
@@ -26,7 +27,7 @@ const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Application root not found");
 const root = app;
 
-let baseUrl = "";
+let baseUrl = embeddedWledMode ? window.location.origin : "";
 let connectionState: ConnectionState = "idle";
 let deviceName = "Aucun appareil connecté";
 let state: WledState = { on: false, bri: 128, seg: [{ col: [[255, 98, 50]], fx: 0, sx: 128, ix: 128 }] };
@@ -366,3 +367,4 @@ async function updateState(patch: Partial<WledState>) {
 }
 
 render();
+if (embeddedWledMode) void connect(new Event("submit") as SubmitEvent);
