@@ -29,6 +29,8 @@ Depuis la V10, le fichier est d’abord contrôlé puis présenté pour confirma
 
 La V11 ajoute un diagnostic live du contrôleur : version WLED, IP, ESP32, nombre de LED, qualité et canal Wi‑Fi, mémoire libre, stockage, cadence et temps de fonctionnement. L’heure de dernière synchronisation confirme visuellement que l’état est encore frais. Les mouvements rapides des curseurs de luminosité sont regroupés en une seule commande finale pour ménager l’ESP32.
 
+La V12 réorganise l’interface mobile dans l’ordre d’utilisation et ajoute une navigation rapide toujours accessible. Le plan du meuble dispose d’un zoom de 100 à 300 %, mémorisé entre les sessions, ainsi que d’un mode plein écran avec défilement horizontal : les 97 points deviennent beaucoup plus simples à sélectionner précisément sur téléphone.
+
 Pour un fonctionnement iPhone uniquement sur le Wi-Fi, sans Home Assistant ni cloud, LED2 peut être hébergée directement par WLED. Voir [`docs/WLED_WIFI.md`](docs/WLED_WIFI.md).
 
 Par sécurité, aucun token Home Assistant n'est intégré au JavaScript public. Toute future connexion Home Assistant devra passer par une configuration locale ou un proxy authentifié.
@@ -68,4 +70,4 @@ Lire les documents dans cet ordre :
 
 ## Statut
 
-Version 11 — contrôle Wi-Fi complet, diagnostic live, plan interactif 97 zones, synchronisation et reprise réseau, commandes regroupées, ambiances par étagère, gestes tactiles, presets, restauration confirmée et tests de sécurité.
+Version 12 — navigation mobile rapide, plan plein écran et zoom persistant, diagnostic live, 97 zones, synchronisation et reprise réseau, commandes regroupées, ambiances par étagère, presets et sauvegarde sécurisée.

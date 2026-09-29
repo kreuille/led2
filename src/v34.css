@@ -72,3 +72,38 @@ body { background: radial-gradient(circle at 50% -20%, #1e293b 0, #0f172a 48%); 
 .master-power { position: fixed; right: max(18px, calc(50vw - 206px)); bottom: 24px; z-index: 60; width: 64px; height: 64px; border: 4px solid #475569; border-radius: 50%; color: #94a3b8; background: #334155; box-shadow: 0 18px 40px rgba(0,0,0,.45); font-size: 29px; transition: .2s; }
 .master-power.active { color: white; background: #16a34a; border-color: #4ade80; box-shadow: 0 0 28px rgba(34,197,94,.45); }
 @media (max-width: 440px) { .shell { padding-inline: 10px; } .topbar { margin-inline: -10px; } .controls { grid-template-columns: 1fr; } .color-card { grid-column: auto; } .white-controls { grid-template-columns: 1fr; } .effect-panel { align-items: stretch; } }
+
+/* V12 navigation and precise furniture map */
+.topbar { order: 0; }
+.quick-navigation { order: 1; position: sticky; top: 59px; z-index: 28; display: flex; gap: 5px; margin: 0 -4px 8px; padding: 6px 4px; overflow-x: auto; scrollbar-width: none; background: rgba(15,23,42,.94); backdrop-filter: blur(14px); }
+.quick-navigation::-webkit-scrollbar { display: none; }
+.quick-navigation button { flex: 0 0 auto; padding: 7px 10px; color: #8494a7; background: rgba(30,41,59,.72); border: 1px solid #293b50; border-radius: 999px; font: 9px 'DM Mono',monospace; }
+.quick-navigation button.active { color: #dbeafe; background: rgba(37,99,235,.4); border-color: #60a5fa; }
+.install-banner { order: 2; }
+.connect-card { order: 3; }
+.master-brightness { order: 4; }
+.wled-presets { order: 5; }
+.zones-panel { order: 6; scroll-margin-top: 112px; }
+.ambience-panel { order: 7; scroll-margin-top: 112px; }
+.white-panel { order: 8; scroll-margin-top: 112px; }
+.dashboard { order: 9; scroll-margin-top: 112px; }
+.scenes-panel { order: 10; scroll-margin-top: 112px; }
+.diagnostics-panel { order: 11; scroll-margin-top: 112px; }
+.device-tools { order: 12; }
+.saved-devices { order: 13; }
+.backup-panel { order: 14; }
+.master-power { order: 15; }
+.furniture-map-scroll { width: 100%; overflow: auto; border-radius: 15px; overscroll-behavior: contain; scrollbar-color: #3b82f6 #172033; }
+.furniture-map { min-width: 100%; }
+.map-view-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 0 8px; }
+.map-view-controls button { min-width: 32px; height: 32px; padding: 0 9px; color: #dbeafe; background: #172a3d; border: 1px solid #375069; border-radius: 8px; font-weight: 800; }
+.map-view-controls button:disabled { opacity: .3; cursor: not-allowed; }
+.map-view-controls span { min-width: 38px; color: #93c5fd; text-align: center; font: 9px 'DM Mono',monospace; }
+.map-view-controls .secondary-button { min-width: 86px; }
+.zones-panel.map-focus { position: fixed; inset: 0; z-index: 100; display: block; margin: 0; padding: max(16px,env(safe-area-inset-top)) 14px max(18px,env(safe-area-inset-bottom)); overflow: auto; border: 0; border-radius: 0; background: #0f172a; }
+.map-focus .furniture-map-scroll { max-height: 62vh; background: #070d15; }
+.map-focus .furniture-map { min-width: 720px; }
+.map-focus .section-title { position: sticky; top: 0; z-index: 8; margin: -16px -14px 10px; padding: 14px; background: rgba(15,23,42,.96); backdrop-filter: blur(14px); }
+.map-focus-open { overflow: hidden; }
+.map-focus-open .master-power { visibility: hidden; }
+@media (max-width: 440px) { .quick-navigation { margin-inline: -2px; } .map-view-controls { justify-content: space-between; } .map-view-controls .secondary-button { flex: 1; } }

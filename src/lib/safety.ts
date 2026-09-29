@@ -70,3 +70,9 @@ export function formatUptime(seconds = 0) {
 export function wifiQuality(signal = 0) {
   return signal >= 75 ? "Excellent" : signal >= 50 ? "Bon" : signal >= 25 ? "Faible" : "Critique";
 }
+
+export function clampMapZoom(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.min(3, Math.round(parsed * 2) / 2));
+}

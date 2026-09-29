@@ -3,7 +3,7 @@ import "./scan.css";
 import "./v34.css";
 import iro from "@jaames/iro";
 import furniturePhoto from "./assets/meuble-led-flat.webp?inline";
-import { clampByte, escapeHtml, formatUptime, isLed2Backup, normalizeWledUrl, reconstructZones, wifiQuality } from "./lib/safety";
+import { clampByte, clampMapZoom, escapeHtml, formatUptime, isLed2Backup, normalizeWledUrl, reconstructZones, wifiQuality } from "./lib/safety";
 
 const embeddedWledMode = /^\/led2\.html?$/i.test(window.location.pathname);
 if ("serviceWorker" in navigator && !embeddedWledMode) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
@@ -98,6 +98,10 @@ let rangeMode = false;
 let rangeAnchor: number | null = null;
 let dragActive = false;
 let dragValue = true;
+let mapZoom = clampMapZoom(localStorage.getItem("led2.mapZoom") || 1);
+let mapFocusMode = false;
+let mapScrollLeft = 0;
+let sectionObserver: IntersectionObserver | null = null;
 
 window.addEventListener("beforeinstallprompt", event => { event.preventDefault(); deferredInstallPrompt = event as InstallPrompt; render(); });
 window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; installMessage = "LED2 est installée."; render(); });
@@ -251,6 +255,7 @@ function startStateSync() {
 }
 
 document.addEventListener("visibilitychange", () => { if (!document.hidden && connectionState !== "idle") void pollState(); });
+document.addEventListener("keydown", event => { if (event.key === "Escape" && mapFocusMode) { mapFocusMode = false; render(); } });
 
 function furnitureShelves() {
   return [
@@ -285,12 +290,14 @@ function renderFurnitureSelector() {
   const shelves = furnitureShelves();
   const markers = furnitureLedMarkers();
   return `<div class="furniture-selector">
-    <div class="furniture-map">
+    <div class="map-view-controls"><button id="map-zoom-out" aria-label="Réduire le plan" ${mapZoom <= 1 ? "disabled" : ""}>−</button><span>${Math.round(mapZoom * 100)}%</span><button id="map-zoom-in" aria-label="Agrandir le plan" ${mapZoom >= 3 ? "disabled" : ""}>+</button><button id="map-focus-toggle" class="secondary-button">${mapFocusMode ? "Fermer le plein écran" : "Plein écran"}</button></div>
+    <div class="furniture-map-scroll" aria-label="Plan zoomable du meuble">
+    <div class="furniture-map" style="width:${mapZoom * 100}%">
       <img src="${furniturePhoto}" alt="Vue frontale plane du meuble avec les trois étagères éclairées" />
       ${markers.map(marker => `<button class="led-marker ${zoneState[marker.zone] ? "active" : ""}" style="left:${marker.x.toFixed(3)}%;top:${marker.y.toFixed(3)}%" data-zone="${marker.zone}" aria-label="Zone ${marker.zone + 1}" title="Zone ${marker.zone + 1}"><span>${marker.zone + 1}</span></button>`).join("")}
       <span class="shelf-map-label map-bottom">1 → 42</span><span class="shelf-map-label map-middle">43 → 55</span><span class="shelf-map-label map-top">56 → 97</span>
       <span class="path-start">1 · DÉPART</span><span class="path-end">97 · FIN</span>
-    </div>
+    </div></div>
     <div class="shelf-buttons">${shelves.map(shelf => {
       const selected = zoneState.slice(shelf.start, shelf.end).filter(Boolean).length;
       return `<button class="shelf-button ${shelfSelectionClass(shelf.start, shelf.end)}" data-shelf="${shelf.id}"><span><strong>${shelf.name}</strong><small>${shelf.direction} · zones ${shelf.start + 1}–${shelf.end}</small></span><b>${selected}/${shelf.end - shelf.start}</b></button>`;
@@ -298,8 +305,36 @@ function renderFurnitureSelector() {
   </div>`;
 }
 
+function renderQuickNavigation() {
+  return `<nav class="quick-navigation" aria-label="Navigation dans LED2"><button data-scroll-target="zones-panel">Plan</button><button data-scroll-target="ambience-panel">Ambiances</button><button data-scroll-target="white-panel">Blanc</button><button data-scroll-target="dashboard">Couleurs</button><button data-scroll-target="scenes-panel">Scènes</button><button data-scroll-target="diagnostics-panel">Santé</button></nav>`;
+}
+
+function updateMapZoom(nextValue: number) {
+  const next = clampMapZoom(nextValue);
+  const mapScroll = document.querySelector<HTMLElement>(".furniture-map-scroll");
+  if (mapScroll) mapScrollLeft = mapScroll.scrollLeft * (next / mapZoom);
+  mapZoom = next;
+  localStorage.setItem("led2.mapZoom", String(mapZoom));
+  render();
+}
+
+function bindSectionNavigation() {
+  sectionObserver?.disconnect();
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-scroll-target]")];
+  const targets = buttons.flatMap(button => { const target = document.querySelector<HTMLElement>(`.${button.dataset.scrollTarget}`); return target ? [target] : []; });
+  buttons.forEach(button => button.addEventListener("click", () => {
+    document.querySelector<HTMLElement>(`.${button.dataset.scrollTarget}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
+  sectionObserver = new IntersectionObserver(entries => {
+    const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (!visible) return;
+    buttons.forEach(button => button.classList.toggle("active", visible.target.classList.contains(button.dataset.scrollTarget || "")));
+  }, { rootMargin: "-115px 0px -55% 0px", threshold: [0, .15, .4] });
+  targets.forEach(target => sectionObserver?.observe(target));
+}
+
 function renderShelfAmbiences() {
-  return `<section class="ambience-panel"><div class="section-title"><div><p class="eyebrow">AMBIANCES PAR ÉTAGÈRE</p><h2>Trois zones, trois atmosphères</h2></div><button id="apply-ambiences" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>Appliquer</button></div>
+  return `<section id="ambience-panel" class="ambience-panel"><div class="section-title"><div><p class="eyebrow">AMBIANCES PAR ÉTAGÈRE</p><h2>Trois zones, trois atmosphères</h2></div><button id="apply-ambiences" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>Appliquer</button></div>
     ${ambienceMessage ? `<p class="group-message">${escapeHtml(ambienceMessage)}</p>` : ""}
     <div class="ambience-grid">${furnitureShelves().map(shelf => {
       const value = shelfAmbiences[shelf.id];
@@ -315,13 +350,13 @@ function renderShelfAmbiences() {
 }
 
 function renderBackupPanel() {
-  return `<section class="backup-panel"><div class="section-title"><div><p class="eyebrow">SAUVEGARDE COMPLÈTE</p><h2>Protéger la configuration</h2></div></div><p class="hint">Exporte la configuration WLED, les presets et les réglages LED2 dans un seul fichier.</p>${backupMessage ? `<p class="group-message">${escapeHtml(backupMessage)}</p>` : ""}<div class="backup-actions"><button id="backup-export" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>Télécharger la sauvegarde</button><label class="secondary-button file-button">Choisir une sauvegarde<input id="backup-file" type="file" accept="application/json,.json" /></label>${pendingRestore ? `<button id="backup-restore" class="primary-confirm">Restaurer maintenant</button><button id="backup-cancel" class="secondary-button">Annuler</button>` : ""}</div></section>`;
+  return `<section id="backup-panel" class="backup-panel"><div class="section-title"><div><p class="eyebrow">SAUVEGARDE COMPLÈTE</p><h2>Protéger la configuration</h2></div></div><p class="hint">Exporte la configuration WLED, les presets et les réglages LED2 dans un seul fichier.</p>${backupMessage ? `<p class="group-message">${escapeHtml(backupMessage)}</p>` : ""}<div class="backup-actions"><button id="backup-export" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>Télécharger la sauvegarde</button><label class="secondary-button file-button">Choisir une sauvegarde<input id="backup-file" type="file" accept="application/json,.json" /></label>${pendingRestore ? `<button id="backup-restore" class="primary-confirm">Restaurer maintenant</button><button id="backup-cancel" class="secondary-button">Annuler</button>` : ""}</div></section>`;
 }
 
 function renderDiagnostics() {
   if (!deviceInfo) return "";
   const signal = deviceInfo.wifi?.signal ?? 0;
-  return `<section class="diagnostics-panel"><div class="section-title"><div><p class="eyebrow">SANTÉ DU CONTRÔLEUR</p><h2>Diagnostic WLED</h2></div><button id="refresh-diagnostics" class="secondary-button">Actualiser</button></div>
+  return `<section id="diagnostics-panel" class="diagnostics-panel"><div class="section-title"><div><p class="eyebrow">SANTÉ DU CONTRÔLEUR</p><h2>Diagnostic WLED</h2></div><button id="refresh-diagnostics" class="secondary-button">Actualiser</button></div>
     <div class="diagnostic-hero"><div><span class="health-dot ${signal >= 50 ? "healthy" : signal >= 25 ? "warning" : "critical"}"></span><strong>${escapeHtml(deviceInfo.name || deviceName)}</strong><small>${escapeHtml(deviceInfo.ip || hostFrom(baseUrl))}</small></div><b>WLED ${escapeHtml(deviceInfo.ver || "—")}</b></div>
     <div class="diagnostic-grid">
       <div><span>Synchronisé</span><strong data-diagnostic="sync">${syncTimeLabel()}</strong></div>
@@ -335,6 +370,8 @@ function renderDiagnostics() {
 }
 
 function render() {
+  const existingMapScroll = document.querySelector<HTMLElement>(".furniture-map-scroll");
+  if (existingMapScroll) mapScrollLeft = existingMapScroll.scrollLeft;
   const statusLabel = connectionState === "connected" ? "Connecté · synchronisé" : connectionState === "connecting" ? "Connexion…" : connectionState === "error" ? "Connexion interrompue" : "Prêt à connecter";
   const statusClass = connectionState === "connected" ? "online" : connectionState === "error" ? "error" : "";
   root.innerHTML = `
@@ -343,6 +380,7 @@ function render() {
         <div class="brand"><span class="brand-mark">✦</span><div><strong>WLED</strong><small>V34 MATRIX · LED2 PWA</small></div></div>
         <div class="connection-pill ${statusClass}"><span class="status-dot"></span>${statusLabel}</div>
       </header>
+      ${renderQuickNavigation()}
       <section class="install-banner"><div><strong>LED2 PWA</strong><span>${installMessage || (deferredInstallPrompt ? "Installation disponible sur cet appareil" : "Installer comme une application")}</span></div><button id="install-app" class="secondary-button">Installer</button></section>
       <section class="master-brightness"><div><span>MASTER LUMINOSITÉ</span><strong data-brightness-value>${Math.round(state.bri / 2.55)}%</strong></div><input id="master-brightness" type="range" min="0" max="255" value="${state.bri}" ${connectionState !== "connected" ? "disabled" : ""} /></section>
       <section class="hero">
@@ -392,6 +430,9 @@ function render() {
   document.querySelectorAll<HTMLButtonElement>("[data-delete-scene]").forEach(button => button.addEventListener("click", () => deleteScene(button.dataset.deleteScene || "")));
   document.querySelectorAll<HTMLButtonElement>("[data-group-scene-id]").forEach(button => button.addEventListener("click", () => applySceneToAll(button.dataset.groupSceneId || "")));
   document.querySelector<HTMLButtonElement>("#zones-toggle")?.addEventListener("click", () => { zonesOpen = !zonesOpen; render(); });
+  document.querySelector<HTMLButtonElement>("#map-zoom-out")?.addEventListener("click", () => updateMapZoom(mapZoom - .5));
+  document.querySelector<HTMLButtonElement>("#map-zoom-in")?.addEventListener("click", () => updateMapZoom(mapZoom + .5));
+  document.querySelector<HTMLButtonElement>("#map-focus-toggle")?.addEventListener("click", () => { mapFocusMode = !mapFocusMode; render(); });
   document.querySelectorAll<HTMLButtonElement>("[data-shelf]").forEach(button => button.addEventListener("click", () => toggleShelf(button.dataset.shelf as ShelfId)));
   document.querySelectorAll<HTMLButtonElement>(".zone-cell").forEach(button => button.addEventListener("click", () => selectZone(Number(button.dataset.zone))));
   bindFurnitureGestures();
@@ -418,6 +459,11 @@ function render() {
   document.querySelector<HTMLButtonElement>("#refresh-diagnostics")?.addEventListener("click", () => void fetchDeviceInfo());
   initializeColorWheel();
   refreshDiagnostics();
+  bindSectionNavigation();
+  const zonesPanel = document.querySelector<HTMLElement>(".zones-panel");
+  zonesPanel?.classList.toggle("map-focus", mapFocusMode);
+  document.body.classList.toggle("map-focus-open", mapFocusMode);
+  requestAnimationFrame(() => { const mapScroll = document.querySelector<HTMLElement>(".furniture-map-scroll"); if (mapScroll) mapScroll.scrollLeft = mapScrollLeft; });
 }
 
 async function installApp() {

@@ -1,5 +1,14 @@
 # Plan de tests
 
+## Validation V12
+
+- Ordre visuel de onze sections contrôlé sur une largeur de 390 px
+- Six raccourcis de navigation et suivi automatique de la section visible
+- Zoom 100–300 % limité par le modèle et mémorisé dans le navigateur
+- Largeur interne du plan doublée à 200 % sans débordement de la page
+- Mode plein écran fixe, verrouillage du fond et fermeture avec Échap
+- Conservation des 97 marqueurs et des gestes de sélection dans le plan zoomé
+
 ## Validation V11
 
 - Diagnostic vérifié contre le contrôleur réel : WLED 0.15.3, ESP32, 194 LED et signal Wi‑Fi
