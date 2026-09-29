@@ -2,7 +2,7 @@ import "./style.css";
 import "./scan.css";
 import "./v34.css";
 import iro from "@jaames/iro";
-import furniturePhoto from "./assets/meuble-led.webp?inline";
+import furniturePhoto from "./assets/meuble-led-flat.webp?inline";
 
 const embeddedWledMode = /^\/led2\.html?$/i.test(window.location.pathname);
 if ("serviceWorker" in navigator && !embeddedWledMode) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
@@ -105,12 +105,30 @@ function shelfSelectionClass(start: number, end: number) {
   return selected === end - start ? "selected" : selected ? "partial" : "";
 }
 
+function furnitureLedMarkers() {
+  const paths = [
+    { start: 0, count: 42, from: [89, 68], to: [11, 68] },
+    { start: 42, count: 13, from: [11, 38.2], to: [37.5, 38.2] },
+    { start: 55, count: 42, from: [89, 12.8], to: [11, 12.8] },
+  ];
+  return paths.flatMap(path => Array.from({ length: path.count }, (_, offset) => {
+    const progress = path.count === 1 ? 0 : offset / (path.count - 1);
+    return {
+      zone: path.start + offset,
+      x: path.from[0] + (path.to[0] - path.from[0]) * progress,
+      y: path.from[1] + (path.to[1] - path.from[1]) * progress,
+    };
+  }));
+}
+
 function renderFurnitureSelector() {
   const shelves = furnitureShelves();
+  const markers = furnitureLedMarkers();
   return `<div class="furniture-selector">
     <div class="furniture-map">
-      <img src="${furniturePhoto}" alt="Meuble avec les trois étagères éclairées" />
-      ${shelves.map(shelf => `<button class="shelf-hotspot shelf-${shelf.id} ${shelfSelectionClass(shelf.start, shelf.end)}" data-shelf="${shelf.id}" aria-label="Sélectionner ${shelf.name}, zones ${shelf.start + 1} à ${shelf.end}"><span class="shelf-line"></span><strong>${shelf.start + 1}–${shelf.end}</strong></button>`).join("")}
+      <img src="${furniturePhoto}" alt="Vue frontale plane du meuble avec les trois étagères éclairées" />
+      ${markers.map(marker => `<button class="led-marker ${zoneState[marker.zone] ? "active" : ""}" style="left:${marker.x.toFixed(3)}%;top:${marker.y.toFixed(3)}%" data-zone="${marker.zone}" aria-label="Zone ${marker.zone + 1}" title="Zone ${marker.zone + 1}"><span>${marker.zone + 1}</span></button>`).join("")}
+      <span class="shelf-map-label map-bottom">1 → 42</span><span class="shelf-map-label map-middle">43 → 55</span><span class="shelf-map-label map-top">56 → 97</span>
       <span class="path-start">1 · DÉPART</span><span class="path-end">97 · FIN</span>
     </div>
     <div class="shelf-buttons">${shelves.map(shelf => {
