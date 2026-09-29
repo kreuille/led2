@@ -25,6 +25,8 @@ LED2 synchronise l’état réel de WLED toutes les 2,5 secondes et tolère les 
 
 La sauvegarde complète regroupe dans un fichier JSON la configuration WLED, ses presets, son état et les préférences LED2. Ce fichier peut ensuite restaurer l’application seule hors connexion, ou l’ensemble lorsqu’un contrôleur WLED est connecté.
 
+Depuis la V10, le fichier est d’abord contrôlé puis présenté pour confirmation : choisir un fichier ne modifie plus immédiatement WLED. Les adresses, noms, scènes et effets provenant du réseau ou d’une sauvegarde sont normalisés et échappés avant affichage. Des tests unitaires couvrent ces protections et la reconstruction des zones.
+
 Pour un fonctionnement iPhone uniquement sur le Wi-Fi, sans Home Assistant ni cloud, LED2 peut être hébergée directement par WLED. Voir [`docs/WLED_WIFI.md`](docs/WLED_WIFI.md).
 
 Par sécurité, aucun token Home Assistant n'est intégré au JavaScript public. Toute future connexion Home Assistant devra passer par une configuration locale ou un proxy authentifié.
@@ -64,4 +66,4 @@ Lire les documents dans cet ordre :
 
 ## Statut
 
-Version 9 — contrôle Wi-Fi complet, plan interactif 97 zones, synchronisation réelle, ambiances par étagère, gestes tactiles, presets et sauvegarde/restauration.
+Version 10 — contrôle Wi-Fi complet, plan interactif 97 zones, synchronisation et reprise réseau, ambiances par étagère, gestes tactiles, presets, restauration confirmée et tests de sécurité.

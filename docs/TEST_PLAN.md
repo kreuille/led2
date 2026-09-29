@@ -1,5 +1,14 @@
 # Plan de tests
 
+## Validation V10
+
+- Tests unitaires de l’échappement HTML des données WLED
+- Refus des protocoles d’adresse non HTTP(S) et des URL contenant des identifiants
+- Reconstruction testée des zones éteintes, entrelacées et Matrix
+- Validation stricte de la signature d’une sauvegarde LED2
+- Restauration en deux étapes : contrôle du fichier puis confirmation explicite
+- Audit npm sans vulnérabilité connue
+
 ## Validation V9 réalisée
 
 - Build TypeScript, bundle Vite et génération de `dist/led2.htm`

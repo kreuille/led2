@@ -1,16 +1,18 @@
 {
   "name": "led2",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.10.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && node scripts/build-wled.mjs",
-    "test": "npm run build && node scripts/validate.mjs",
+    "test": "npm run build && node scripts/validate.mjs && npm run test:unit",
+    "test:unit": "tsx --test tests/*.test.ts",
     "preview": "vite preview"
   },
   "devDependencies": {
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.5",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"
   },

@@ -3,6 +3,7 @@ import "./scan.css";
 import "./v34.css";
 import iro from "@jaames/iro";
 import furniturePhoto from "./assets/meuble-led-flat.webp?inline";
+import { escapeHtml, isLed2Backup, normalizeWledUrl, reconstructZones } from "./lib/safety";
 
 const embeddedWledMode = /^\/led2\.html?$/i.test(window.location.pathname);
 if ("serviceWorker" in navigator && !embeddedWledMode) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
@@ -79,6 +80,7 @@ let installMessage = "";
 let shelfAmbiences = loadShelfAmbiences();
 let ambienceMessage = "";
 let backupMessage = "";
+let pendingRestore: Led2Backup | null = null;
 let selectionUndo: boolean[][] = [];
 let selectionRedo: boolean[][] = [];
 let rangeMode = false;
@@ -88,8 +90,14 @@ let dragValue = true;
 
 window.addEventListener("beforeinstallprompt", event => { event.preventDefault(); deferredInstallPrompt = event as InstallPrompt; render(); });
 window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; installMessage = "LED2 est installée."; render(); });
-function loadSavedDevices(): SavedDevice[] { try { const value = JSON.parse(localStorage.getItem("led2.devices") || "[]"); return Array.isArray(value) ? value.filter(item => item && typeof item.url === "string" && typeof item.name === "string") : []; } catch { return []; } }
-function loadScenes(): Scene[] { try { const value = JSON.parse(localStorage.getItem("led2.scenes") || "[]"); return Array.isArray(value) ? value : []; } catch { return []; } }
+function loadSavedDevices(): SavedDevice[] { try { const value = JSON.parse(localStorage.getItem("led2.devices") || "[]"); return Array.isArray(value) ? value.flatMap(item => { const url = item && typeof item.url === "string" ? normalizeWledUrl(item.url) : null; return url && typeof item.name === "string" ? [{ url, name: item.name.slice(0, 80) }] : []; }) : []; } catch { return []; } }
+function loadScenes(): Scene[] { try { return sanitizeScenes(JSON.parse(localStorage.getItem("led2.scenes") || "[]")); } catch { return []; } }
+function sanitizeScenes(value: unknown): Scene[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(scene => scene && typeof scene.id === "string" && typeof scene.name === "string" && scene.state && typeof scene.state.on === "boolean" && Number.isFinite(scene.state.bri) && Array.isArray(scene.state.seg))
+    .slice(0, 20)
+    .map(scene => ({ id: scene.id.slice(0, 100), name: scene.name.slice(0, 80), state: scene.state as WledState }));
+}
 function loadFurnitureLayout(): FurnitureLayout {
   try {
     const value = JSON.parse(localStorage.getItem("led2.furnitureLayout") || "null") as Partial<FurnitureLayout> | null;
@@ -107,16 +115,27 @@ function defaultShelfAmbiences(): ShelfAmbiences {
   };
 }
 function loadShelfAmbiences(): ShelfAmbiences {
-  const defaults = defaultShelfAmbiences();
   try {
     const saved = JSON.parse(localStorage.getItem("led2.shelfAmbiences") || "null") as Partial<ShelfAmbiences> | null;
-    if (!saved) return defaults;
-    return Object.fromEntries((Object.keys(defaults) as ShelfId[]).map(id => [id, { ...defaults[id], ...saved[id] }])) as ShelfAmbiences;
-  } catch { return defaults; }
+    return sanitizeShelfAmbiences(saved);
+  } catch { return defaultShelfAmbiences(); }
+}
+function sanitizeShelfAmbiences(saved: Partial<ShelfAmbiences> | null | undefined): ShelfAmbiences {
+  const defaults = defaultShelfAmbiences();
+  const safeNumber = (value: unknown, fallback: number, maximum: number) => { const parsed = Number(value); return Number.isFinite(parsed) ? Math.max(0, Math.min(maximum, parsed)) : fallback; };
+  return Object.fromEntries((Object.keys(defaults) as ShelfId[]).map(id => {
+    const candidate = saved?.[id];
+    const mode = candidate && ["off", "rgb", "white"].includes(candidate.mode) ? candidate.mode : defaults[id].mode;
+    const color = candidate && /^#[0-9a-f]{6}$/i.test(candidate.color) ? candidate.color : defaults[id].color;
+    const temperature = safeNumber(candidate?.temperature, defaults[id].temperature, 100);
+    const brightness = safeNumber(candidate?.brightness, defaults[id].brightness, 255);
+    const effect = safeNumber(candidate?.effect, defaults[id].effect, 255);
+    return [id, { mode, color, temperature, brightness, effect }];
+  })) as ShelfAmbiences;
 }
 function saveShelfAmbiences() { localStorage.setItem("led2.shelfAmbiences", JSON.stringify(shelfAmbiences)); }
 function saveScenes() { localStorage.setItem("led2.scenes", JSON.stringify(scenes)); }
-function firstColor() { const color = state.seg[0]?.col?.[0] || [255, 98, 50]; return `#${color.map(value => value.toString(16).padStart(2, "0")).join("")}`; }
+function firstColor() { const color = state.seg[0]?.col?.[0] || [255, 98, 50]; return `#${color.slice(0, 3).map(value => Math.round(Math.max(0, Math.min(255, Number(value) || 0))).toString(16).padStart(2, "0")).join("")}`; }
 function fetchLocal(input: string, init: RequestInit = {}) { return fetch(input, { ...init, targetAddressSpace: "local" } as LocalRequestInit); }
 function networkPrefixFrom(value: string) {
   const match = value.trim().match(/(?:^|\/\/)(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\.(\d{1,3}))?(?::\d+)?(?:\/|$)/) || value.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\.(\d{1,3}))?$/);
@@ -137,17 +156,7 @@ function stateFingerprint(value: WledState) {
 }
 
 function zonesFromSegments(value: WledState) {
-  if (!value.on) return Array.from({ length: TOTAL_ZONES }, () => false);
-  const segments = value.seg || [];
-  if (!segments.length || segments.some(segment => (segment.stop || 0) > TOTAL_ZONES * 2 || ((segment.spc || 0) !== 1 && (segment.stop || 0) > 0))) return null;
-  const next = Array.from({ length: TOTAL_ZONES }, () => false);
-  for (const segment of segments) {
-    if (!segment.on || !segment.stop) continue;
-    const start = Math.max(0, segment.start || 0);
-    const stop = Math.min(TOTAL_ZONES * 2, segment.stop);
-    for (let pixel = start; pixel < stop; pixel += 2) next[Math.floor(pixel / 2)] = true;
-  }
-  return next;
+  return reconstructZones(value, TOTAL_ZONES);
 }
 
 function applyRemoteState(next: WledState) {
@@ -251,12 +260,12 @@ function renderFurnitureSelector() {
 
 function renderShelfAmbiences() {
   return `<section class="ambience-panel"><div class="section-title"><div><p class="eyebrow">AMBIANCES PAR ÉTAGÈRE</p><h2>Trois zones, trois atmosphères</h2></div><button id="apply-ambiences" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>Appliquer</button></div>
-    ${ambienceMessage ? `<p class="group-message">${ambienceMessage}</p>` : ""}
+    ${ambienceMessage ? `<p class="group-message">${escapeHtml(ambienceMessage)}</p>` : ""}
     <div class="ambience-grid">${furnitureShelves().map(shelf => {
       const value = shelfAmbiences[shelf.id];
       return `<article class="ambience-card" data-ambience-card="${shelf.id}"><div><strong>${shelf.name}</strong><small>Zones ${shelf.start + 1}–${shelf.end}</small></div>
         <label>Mode<select data-ambience-mode="${shelf.id}"><option value="off" ${value.mode === "off" ? "selected" : ""}>Éteint</option><option value="rgb" ${value.mode === "rgb" ? "selected" : ""}>Couleur RGB</option><option value="white" ${value.mode === "white" ? "selected" : ""}>Blanc</option></select></label>
-        <label class="ambience-color ${value.mode === "rgb" ? "" : "is-hidden"}">Couleur<input type="color" data-ambience-color="${shelf.id}" value="${value.color}" /></label>
+        <label class="ambience-color ${value.mode === "rgb" ? "" : "is-hidden"}">Couleur<input type="color" data-ambience-color="${shelf.id}" value="${escapeHtml(value.color)}" /></label>
         <label class="ambience-temperature ${value.mode === "white" ? "" : "is-hidden"}">Température <span>${value.temperature}%</span><input type="range" min="0" max="100" data-ambience-temperature="${shelf.id}" value="${value.temperature}" /></label>
         <label>Intensité <span>${Math.round(value.brightness / 2.55)}%</span><input type="range" min="0" max="255" data-ambience-brightness="${shelf.id}" value="${value.brightness}" /></label>
       </article>`;
@@ -266,7 +275,7 @@ function renderShelfAmbiences() {
 }
 
 function renderBackupPanel() {
-  return `<section class="backup-panel"><div class="section-title"><div><p class="eyebrow">SAUVEGARDE COMPLÈTE</p><h2>Protéger la configuration</h2></div></div><p class="hint">Exporte la configuration WLED, les presets et les réglages LED2 dans un seul fichier.</p>${backupMessage ? `<p class="group-message">${backupMessage}</p>` : ""}<div class="backup-actions"><button id="backup-export" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>Télécharger la sauvegarde</button><label class="secondary-button file-button">Choisir une sauvegarde<input id="backup-file" type="file" accept="application/json,.json" /></label></div></section>`;
+  return `<section class="backup-panel"><div class="section-title"><div><p class="eyebrow">SAUVEGARDE COMPLÈTE</p><h2>Protéger la configuration</h2></div></div><p class="hint">Exporte la configuration WLED, les presets et les réglages LED2 dans un seul fichier.</p>${backupMessage ? `<p class="group-message">${escapeHtml(backupMessage)}</p>` : ""}<div class="backup-actions"><button id="backup-export" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>Télécharger la sauvegarde</button><label class="secondary-button file-button">Choisir une sauvegarde<input id="backup-file" type="file" accept="application/json,.json" /></label>${pendingRestore ? `<button id="backup-restore" class="primary-confirm">Restaurer maintenant</button><button id="backup-cancel" class="secondary-button">Annuler</button>` : ""}</div></section>`;
 }
 
 function render() {
@@ -286,26 +295,27 @@ function render() {
       </section>
       <section class="connect-card">
         <div class="card-heading"><div><p class="eyebrow">PREMIÈRE ÉTAPE</p><h2>Connecter un appareil</h2></div><span class="step">01</span></div>
-        <form id="connect-form" class="connect-form"><label for="device-url">Adresse de l'appareil</label><div class="input-row"><input id="device-url" type="text" placeholder="http://wled.local ou 192.168.1.42" value="${baseUrl}" /><button type="submit">${connectionState === "connecting" ? "Connexion…" : "Connecter"}<span>→</span></button></div><p class="hint">L'adresse locale de votre appareil WLED</p></form>
-        ${connectionState === "error" ? '<p class="error-message">Impossible de joindre cet appareil. Vérifiez son adresse et votre réseau.</p>' : ""}
+        <form id="connect-form" class="connect-form"><label for="device-url">Adresse de l'appareil</label><div class="input-row"><input id="device-url" type="text" placeholder="http://wled.local ou 192.168.1.42" value="${escapeHtml(baseUrl)}" /><button type="submit">${connectionState === "connecting" ? "Connexion…" : "Connecter"}<span>→</span></button></div><p class="hint">L'adresse locale de votre appareil WLED</p></form>
+        ${connectionState === "error" ? '<div class="error-message"><span>Impossible de joindre cet appareil. Vérifiez son adresse et votre réseau.</span><button id="retry-connection">Réessayer</button></div>' : ""}
       </section>
-      <div class="device-tools"><div><p class="eyebrow">DÉCOUVERTE LOCALE</p><h3>Appareils sur le réseau</h3><p class="hint">LED2 tente d’identifier la forme de votre réseau avant de scanner les adresses.</p></div><div class="scan-row"><input id="network-prefix" type="text" value="${detectedPrefixes[0] || "192.168.1"}" aria-label="Préfixe réseau" /><button id="detect-button" class="secondary-button">Détecter</button><button id="scan-button" class="secondary-button">${scanning ? "Scan en cours…" : "Scanner"}</button></div>${scanMessage ? `<p class="hint">${scanMessage}</p>` : ""}${scanResults.length ? `<div class="device-list">${scanResults.map(device => `<button class="device-item" data-device-url="${device.url}"><span class="device-icon">✦</span><span><strong>${device.name}</strong><small>${device.url}</small></span><span>→</span></button>`).join("")}</div>` : ""}</div>
-      ${savedDevices.length ? `<div class="saved-devices"><p class="eyebrow">MES APPAREILS</p>${savedDevices.map(device => `<button class="saved-device" data-saved-url="${device.url}"><span>${device.name}</span><small>${device.url}</small></button>`).join("")}</div>` : ""}
+      <div class="device-tools"><div><p class="eyebrow">DÉCOUVERTE LOCALE</p><h3>Appareils sur le réseau</h3><p class="hint">LED2 tente d’identifier la forme de votre réseau avant de scanner les adresses.</p></div><div class="scan-row"><input id="network-prefix" type="text" value="${escapeHtml(detectedPrefixes[0] || "192.168.1")}" aria-label="Préfixe réseau" /><button id="detect-button" class="secondary-button">Détecter</button><button id="scan-button" class="secondary-button">${scanning ? "Scan en cours…" : "Scanner"}</button></div>${scanMessage ? `<p class="hint">${escapeHtml(scanMessage)}</p>` : ""}${scanResults.length ? `<div class="device-list">${scanResults.map(device => `<button class="device-item" data-device-url="${escapeHtml(device.url)}"><span class="device-icon">✦</span><span><strong>${escapeHtml(device.name)}</strong><small>${escapeHtml(device.url)}</small></span><span>→</span></button>`).join("")}</div>` : ""}</div>
+      ${savedDevices.length ? `<div class="saved-devices"><p class="eyebrow">MES APPAREILS</p>${savedDevices.map(device => `<button class="saved-device" data-saved-url="${escapeHtml(device.url)}"><span>${escapeHtml(device.name)}</span><small>${escapeHtml(device.url)}</small></button>`).join("")}</div>` : ""}
       <section class="wled-presets"><div class="section-title"><div><p class="eyebrow">PRESETS WLED</p><h2>Mémoires de l’appareil</h2></div><button id="preset-record" class="secondary-button">${presetRecordMode ? "Annuler" : "Enregistrer"}</button></div>${presetMessage ? `<p class="group-message">${presetMessage}</p>` : ""}<div class="preset-grid">${[1,2,3,4].map(id => `<button class="preset-slot" data-preset="${id}" ${connectionState !== "connected" ? "disabled" : ""}>Mém. ${id}</button>`).join("")}</div></section>
       <section class="zones-panel"><div class="section-title"><div><p class="eyebrow">PLAN DU MEUBLE · ${isMatrixMode ? "MATRIX HD" : "SEGMENTS"}</p><h2>Choisir les LED sur la photo</h2></div><button id="zones-toggle" class="secondary-button">${zonesOpen ? "Masquer les numéros" : "LED par LED"}</button></div>${renderFurnitureSelector()}<div class="map-actions"><div><button id="zones-all">Tout</button><button id="zones-none">Rien</button><button id="zones-pattern">1 sur 2</button><button id="zones-range" class="${rangeMode ? "active" : ""}">${rangeAnchor === null ? "Plage" : `De ${rangeAnchor + 1} à…`}</button><button id="zones-undo" ${selectionUndo.length ? "" : "disabled"}>↶</button><button id="zones-redo" ${selectionRedo.length ? "" : "disabled"}>↷</button></div><label><input id="live-zone-apply" type="checkbox" ${liveZoneApply ? "checked" : ""} ${connectionState !== "connected" ? "disabled" : ""} /> Application directe</label><span>${zoneState.filter(Boolean).length} sélectionnées</span></div><p class="selection-help">Touchez une LED, faites glisser sur la photo, ou utilisez « Plage » pour sélectionner deux extrémités.</p>${layoutMessage ? `<p class="layout-message">${layoutMessage}</p>` : ""}${zonesOpen ? `<div class="layout-calibration"><p>Limites mesurées des étagères — modifiables si le ruban est déplacé.</p><label>Fin étagère basse<input id="bottom-end" type="number" min="1" max="95" value="${furnitureLayout.bottomEnd}" /></label><label>Fin petite étagère<input id="middle-end" type="number" min="2" max="96" value="${furnitureLayout.middleEnd}" /></label><button id="save-layout">Mémoriser</button></div><div class="zone-grid">${zoneState.map((active, index) => `<button class="zone-cell ${active ? "active" : ""}" data-zone="${index}">${index + 1}</button>`).join("")}</div>` : ""}<button id="zones-apply" class="primary-wide" ${connectionState !== "connected" ? "disabled" : ""}>Allumer la sélection (${zoneState.filter(Boolean).length})</button></section>
       ${renderShelfAmbiences()}
       <section class="white-panel ${activeChannel === "white" || fusionEnabled ? "active-mode" : "inactive-mode"}"><div class="section-title"><div><p class="eyebrow">☀ CANAL BLANC</p><h2>Blanc et température</h2></div><label class="fusion-toggle"><input id="fusion-toggle" type="checkbox" ${fusionEnabled ? "checked" : ""} ${connectionState !== "connected" ? "disabled" : ""} /> Fusion</label></div><div class="temperature-labels"><span>Chaud</span><span>Froid</span></div><div class="white-controls"><label>Température<input id="white-temperature" class="cct-range" type="range" min="0" max="100" value="${whiteTemperature}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label>Intensité<input id="white-level" type="range" min="0" max="255" value="${whiteBrightness}" ${connectionState !== "connected" ? "disabled" : ""} /></label></div></section>
       <section class="dashboard ${connectionState !== "connected" ? "muted" : ""}">
-        <div class="section-title"><div><p class="eyebrow">ESPACE DE CONTRÔLE</p><h2>${deviceName}</h2></div><span class="locked">${connectionState === "connected" ? "ACTIF" : "EN ATTENTE"}</span></div>
+        <div class="section-title"><div><p class="eyebrow">ESPACE DE CONTRÔLE</p><h2>${escapeHtml(deviceName)}</h2></div><span class="locked">${connectionState === "connected" ? "ACTIF" : "EN ATTENTE"}</span></div>
         <div class="controls"><article class="control-card power-card"><div><span class="control-label">ALIMENTATION</span><h3>${state.on ? "Allumées" : "Éteintes"}</h3></div><button class="power-toggle ${state.on ? "active" : ""}" id="power-toggle" aria-label="Basculer l'alimentation"><span></span></button></article><article class="control-card legacy-brightness"><span class="control-label">LUMINOSITÉ</span><div class="value-row"><h3>${Math.round((state.bri / 255) * 100)}%</h3><span>INTENSITÉ</span></div><input id="brightness" type="range" min="1" max="255" value="${state.bri}" ${connectionState !== "connected" ? "disabled" : ""} /></article><article class="control-card color-card ${activeChannel === "rgb" || fusionEnabled ? "active-mode" : "inactive-mode"}"><span class="control-label">◉ COULEUR RGB</span><div id="rgb-picker" class="rgb-picker" aria-label="Roue de couleur RGB"></div><label class="rgb-level">INTENSITÉ RGB<input id="rgb-level" type="range" min="0" max="255" value="${rgbBrightness}" ${connectionState !== "connected" ? "disabled" : ""} /></label></article></div>
-      <div class="effect-panel"><span class="control-label">EFFET WLED ${isMatrixMode ? "· indisponible en Matrix" : ""}</span><input id="effect-search" class="effect-search" type="search" value="${effectSearch}" placeholder="Rechercher un effet" /><select id="effect" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""}>${effects.filter(effect => effect.label.toLowerCase().includes(effectSearch.toLowerCase())).map(effect => `<option value="${effect.id}" ${state.seg[0]?.fx === effect.id ? "selected" : ""}>${effect.label}</option>`).join("")}</select><label class="mini-control">COULEUR<input id="color-picker" type="color" value="${firstColor()}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label class="mini-control">VITESSE<input id="effect-speed" type="range" min="0" max="255" value="${state.seg[0]?.sx ?? 128}" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""} /></label><label class="mini-control">INTENSITÉ<input id="effect-intensity" type="range" min="0" max="255" value="${state.seg[0]?.ix ?? 128}" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""} /></label></div>
+      <div class="effect-panel"><span class="control-label">EFFET WLED ${isMatrixMode ? "· indisponible en Matrix" : ""}</span><input id="effect-search" class="effect-search" type="search" value="${escapeHtml(effectSearch)}" placeholder="Rechercher un effet" /><select id="effect" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""}>${effects.filter(effect => effect.label.toLowerCase().includes(effectSearch.toLowerCase())).map(effect => `<option value="${effect.id}" ${state.seg[0]?.fx === effect.id ? "selected" : ""}>${escapeHtml(effect.label)}</option>`).join("")}</select><label class="mini-control">COULEUR<input id="color-picker" type="color" value="${firstColor()}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label class="mini-control">VITESSE<input id="effect-speed" type="range" min="0" max="255" value="${state.seg[0]?.sx ?? 128}" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""} /></label><label class="mini-control">INTENSITÉ<input id="effect-intensity" type="range" min="0" max="255" value="${state.seg[0]?.ix ?? 128}" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""} /></label></div>
       </section>
-      <section class="scenes-panel"><div class="section-title"><div><p class="eyebrow">MES SCÈNES</p><h2>Presets lumineux</h2></div><button id="save-scene" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>+ Enregistrer</button></div>${groupMessage ? `<p class="group-message">${groupMessage}</p>` : ""}${scenes.length ? `<div class="scene-list">${scenes.map(scene => `<article class="scene-item"><button class="scene-apply" data-scene-id="${scene.id}"><span class="scene-swatch" style="background:${firstColorFrom(scene.state)}"></span><span><strong>${scene.name}</strong><small>${scene.state.on ? "Allumé" : "Éteint"} · ${Math.round(scene.state.bri / 255 * 100)}%</small></span></button><button class="scene-group" data-group-scene-id="${scene.id}" ${savedDevices.length < 2 ? "disabled" : ""} aria-label="Appliquer ${scene.name} à tous">Tous</button><button class="scene-delete" data-delete-scene="${scene.id}" aria-label="Supprimer ${scene.name}">×</button></article>`).join("")}</div>` : `<p class="hint">Aucune scène enregistrée pour le moment.</p>`}</section>
+      <section class="scenes-panel"><div class="section-title"><div><p class="eyebrow">MES SCÈNES</p><h2>Presets lumineux</h2></div><button id="save-scene" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>+ Enregistrer</button></div>${groupMessage ? `<p class="group-message">${escapeHtml(groupMessage)}</p>` : ""}${scenes.length ? `<div class="scene-list">${scenes.map(scene => `<article class="scene-item"><button class="scene-apply" data-scene-id="${escapeHtml(scene.id)}"><span class="scene-swatch" style="background:${firstColorFrom(scene.state)}"></span><span><strong>${escapeHtml(scene.name)}</strong><small>${scene.state.on ? "Allumé" : "Éteint"} · ${Math.round(scene.state.bri / 255 * 100)}%</small></span></button><button class="scene-group" data-group-scene-id="${escapeHtml(scene.id)}" ${savedDevices.length < 2 ? "disabled" : ""} aria-label="Appliquer ${escapeHtml(scene.name)} à tous">Tous</button><button class="scene-delete" data-delete-scene="${escapeHtml(scene.id)}" aria-label="Supprimer ${escapeHtml(scene.name)}">×</button></article>`).join("")}</div>` : `<p class="hint">Aucune scène enregistrée pour le moment.</p>`}</section>
       ${renderBackupPanel()}
       <button id="master-power" class="master-power ${state.on ? "active" : ""}" aria-label="Alimentation générale">⏻</button>
     </main>`;
 
   document.querySelector<HTMLFormElement>("#connect-form")?.addEventListener("submit", connect);
+  document.querySelector<HTMLButtonElement>("#retry-connection")?.addEventListener("click", () => void connect(new Event("submit") as SubmitEvent));
   document.querySelector<HTMLButtonElement>("#power-toggle")?.addEventListener("click", () => updateState({ on: !state.on }));
   document.querySelector<HTMLButtonElement>("#master-power")?.addEventListener("click", () => updateState({ on: !state.on }));
   document.querySelector<HTMLButtonElement>("#install-app")?.addEventListener("click", installApp);
@@ -346,6 +356,8 @@ function render() {
   bindAmbienceControls();
   document.querySelector<HTMLButtonElement>("#backup-export")?.addEventListener("click", exportBackup);
   document.querySelector<HTMLInputElement>("#backup-file")?.addEventListener("change", importBackup);
+  document.querySelector<HTMLButtonElement>("#backup-restore")?.addEventListener("click", () => void restoreBackup());
+  document.querySelector<HTMLButtonElement>("#backup-cancel")?.addEventListener("click", () => { pendingRestore = null; backupMessage = "Restauration annulée."; render(); });
   initializeColorWheel();
 }
 
@@ -358,7 +370,7 @@ async function installApp() {
   render();
 }
 
-function firstColorFrom(sceneState: WledState) { const color = sceneState.seg[0]?.col?.[0] || [255, 98, 50]; return `rgb(${color.join(",")})`; }
+function firstColorFrom(sceneState: WledState) { const color = sceneState.seg[0]?.col?.[0] || [255, 98, 50]; return `rgb(${color.slice(0, 3).map(value => Math.round(Math.max(0, Math.min(255, Number(value) || 0)))).join(",")})`; }
 function saveCurrentScene() { const name = window.prompt("Nom de la scène", `Scène ${scenes.length + 1}`)?.trim(); if (!name) return; scenes = [{ id: crypto.randomUUID(), name, state: structuredClone(state) }, ...scenes].slice(0, 20); saveScenes(); render(); }
 function applyScene(id: string) { const scene = scenes.find(item => item.id === id); if (!scene) return; state = structuredClone(scene.state); render(); updateState(state); }
 function deleteScene(id: string) { scenes = scenes.filter(scene => scene.id !== id); saveScenes(); render(); }
@@ -621,14 +633,28 @@ async function exportBackup() {
 async function importBackup(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text()) as unknown;
+    if (!isLed2Backup(parsed)) throw new Error("format");
+    pendingRestore = parsed as Led2Backup;
+    const created = new Date(pendingRestore.createdAt);
+    backupMessage = `Sauvegarde valide${Number.isNaN(created.getTime()) ? "" : ` du ${created.toLocaleString("fr-FR")}`}. Confirmez pour remplacer la configuration actuelle.`;
+  } catch { pendingRestore = null; backupMessage = "Ce fichier n’est pas une sauvegarde LED2 valide."; }
+  render();
+}
+async function restoreBackup() {
+  const backup = pendingRestore;
+  if (!backup) return;
   backupMessage = "Restauration en cours…"; render();
   try {
-    const backup = JSON.parse(await file.text()) as Led2Backup;
-    if (backup.format !== "led2-backup" || backup.version !== 1 || !backup.app) throw new Error("format");
-    savedDevices = Array.isArray(backup.app.devices) ? backup.app.devices : savedDevices;
-    scenes = Array.isArray(backup.app.scenes) ? backup.app.scenes : scenes;
-    furnitureLayout = backup.app.furnitureLayout || furnitureLayout;
-    shelfAmbiences = backup.app.shelfAmbiences || shelfAmbiences;
+    if (Array.isArray(backup.app.devices)) savedDevices = backup.app.devices.flatMap(device => {
+      const url = device && typeof device.url === "string" ? normalizeWledUrl(device.url) : null;
+      return url && typeof device.name === "string" ? [{ url, name: device.name.slice(0, 80) }] : [];
+    });
+    if (Array.isArray(backup.app.scenes)) scenes = sanitizeScenes(backup.app.scenes);
+    const restoredLayout = backup.app.furnitureLayout;
+    if (restoredLayout && Number.isInteger(restoredLayout.bottomEnd) && Number.isInteger(restoredLayout.middleEnd) && restoredLayout.bottomEnd > 0 && restoredLayout.bottomEnd < restoredLayout.middleEnd && restoredLayout.middleEnd < TOTAL_ZONES) furnitureLayout = restoredLayout;
+    shelfAmbiences = sanitizeShelfAmbiences(backup.app.shelfAmbiences);
     liveZoneApply = backup.app.liveZoneApply !== false;
     localStorage.setItem("led2.devices", JSON.stringify(savedDevices)); saveScenes();
     localStorage.setItem("led2.furnitureLayout", JSON.stringify(furnitureLayout)); saveShelfAmbiences();
@@ -645,7 +671,8 @@ async function importBackup(event: Event) {
     }
     if (connectionState === "connected" && backup.wled.state) await sendWledState(backup.wled.state);
     backupMessage = connectionState === "connected" ? "Configuration WLED et réglages LED2 restaurés." : "Réglages LED2 restaurés. Connectez WLED pour restaurer aussi l’appareil.";
-  } catch { backupMessage = "Ce fichier n’est pas une sauvegarde LED2 valide, ou WLED a refusé la restauration."; }
+    pendingRestore = null;
+  } catch { backupMessage = "WLED a refusé la restauration. La sauvegarde reste prête pour une nouvelle tentative."; }
   render();
 }
 async function useWledPreset(id: number) { if (connectionState !== "connected") return; presetMessage = presetRecordMode ? `Enregistrement de la mémoire ${id}…` : `Chargement de la mémoire ${id}…`; render(); try { const payload = presetRecordMode ? { psave: id } : { ps: id }; const response = await fetchLocal(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(); presetRecordMode = false; presetMessage = `Mémoire ${id} ${payload.psave ? "enregistrée" : "chargée"}.`; } catch { presetMessage = `Impossible de modifier la mémoire ${id}.`; } render(); }
@@ -773,8 +800,9 @@ async function detectNetwork() {
 async function connect(event: SubmitEvent) {
   event.preventDefault();
   const input = document.querySelector<HTMLInputElement>("#device-url");
-  baseUrl = input?.value.trim().replace(/\/$/, "") ?? "";
-  if (!baseUrl) return;
+  const normalizedUrl = normalizeWledUrl(input?.value || "");
+  if (!normalizedUrl) { connectionState = "error"; scanMessage = "Adresse invalide : utilisez uniquement http:// ou https:// avec le nom ou l’adresse IP de WLED."; render(); return; }
+  baseUrl = normalizedUrl;
   connectionState = "connecting";
   render();
   try {

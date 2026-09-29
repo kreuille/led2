@@ -37,3 +37,12 @@
 - Support multi-appareils
 - PWA et installation mobile
 - Déploiement GitHub Pages
+
+## Phase 5 — consolidation réalisée
+
+- Synchronisation périodique et reprise après coupure Wi-Fi
+- Ambiances indépendantes par étagère
+- Sélection tactile, plage et historique annuler/rétablir
+- Sauvegarde/restauration complète avec confirmation
+- Normalisation et échappement des données externes
+- Tests unitaires du modèle et audit des dépendances
