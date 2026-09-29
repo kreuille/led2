@@ -19,7 +19,11 @@ La version PWA reprend maintenant le moteur WLED V34 Matrix fourni : 97 zones/19
 
 La vue « Plan du meuble » utilise une vue frontale plane du meuble. Les 97 zones sont représentées directement sur les bandeaux à leurs proportions réelles : 42 sur l’étagère basse, 13 sur la petite et 42 sur la haute. Chaque point peut être sélectionné sur l’image ; les raccourcis par étagère et la grille numérotée restent disponibles.
 
-Le mode « Application directe » envoie automatiquement la sélection à WLED après chaque toucher, avec une courte temporisation pour regrouper les gestes successifs. Il peut être désactivé pour préparer une sélection avant de l’appliquer manuellement.
+Le mode « Application directe » envoie automatiquement la sélection à WLED après chaque toucher, avec une courte temporisation pour regrouper les gestes successifs. Il peut être désactivé pour préparer une sélection avant de l’appliquer manuellement. La photo accepte aussi le glisser tactile, la sélection d’une plage entre deux LED et l’annulation/rétablissement.
+
+LED2 synchronise l’état réel de WLED toutes les 2,5 secondes et tolère les coupures réseau brèves. Les trois étagères ont chacune leur mode, couleur ou température et intensité. Les ambiances TV, Soirée, Veilleuse, Blanc total et Couleurs peuvent être appliquées en un geste.
+
+La sauvegarde complète regroupe dans un fichier JSON la configuration WLED, ses presets, son état et les préférences LED2. Ce fichier peut ensuite restaurer l’application seule hors connexion, ou l’ensemble lorsqu’un contrôleur WLED est connecté.
 
 Pour un fonctionnement iPhone uniquement sur le Wi-Fi, sans Home Assistant ni cloud, LED2 peut être hébergée directement par WLED. Voir [`docs/WLED_WIFI.md`](docs/WLED_WIFI.md).
 
@@ -35,7 +39,7 @@ Nouvelle génération de l’interface web de contrôle WLED.
 
 Créer un contrôleur WLED moderne, fiable et maintenable, utilisable sur mobile et ordinateur, sans backend obligatoire.
 
-## Fonctionnalités prévues
+## Fonctionnalités disponibles
 
 - Connexion à un ou plusieurs contrôleurs WLED
 - Découverte et configuration des appareils
@@ -60,4 +64,4 @@ Lire les documents dans cet ordre :
 
 ## Statut
 
-Phase 0 — cadrage et fondations.
+Version 9 — contrôle Wi-Fi complet, plan interactif 97 zones, synchronisation réelle, ambiances par étagère, gestes tactiles, presets et sauvegarde/restauration.

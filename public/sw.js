@@ -1,4 +1,4 @@
-const CACHE = "led2-v8";
+const CACHE = "led2-v9";
 const BASE = new URL(".", self.registration.scope).pathname;
 const APP_SHELL = [BASE, `${BASE}index.html`, `${BASE}manifest.webmanifest`, `${BASE}icon.svg`, `${BASE}icon-192.png`, `${BASE}icon-512.png`];
 

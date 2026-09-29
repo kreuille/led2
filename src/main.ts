@@ -13,7 +13,7 @@ type LocalRequestInit = RequestInit & { targetAddressSpace?: "local" };
 
 interface WledSegment {
   id?: number; start?: number; stop?: number; grp?: number; spc?: number; on?: boolean;
-  col: number[][]; fx: number; sx: number; ix: number; bri?: number;
+  col: number[][]; fx: number; sx: number; ix: number; bri?: number; n?: string;
 }
 interface WledState {
   on: boolean;
@@ -25,6 +25,14 @@ interface DiscoveredDevice extends SavedDevice { version?: string; }
 interface Scene { id: string; name: string; state: WledState; }
 interface FurnitureLayout { bottomEnd: number; middleEnd: number; }
 type ShelfId = "bottom" | "middle" | "top";
+type ShelfMode = "off" | "rgb" | "white";
+interface ShelfAmbience { mode: ShelfMode; color: string; temperature: number; brightness: number; effect: number; }
+type ShelfAmbiences = Record<ShelfId, ShelfAmbience>;
+interface Led2Backup {
+  format: "led2-backup"; version: 1; createdAt: string;
+  wled: { cfg?: unknown; state?: unknown; presets?: unknown };
+  app: { devices: SavedDevice[]; scenes: Scene[]; furnitureLayout: FurnitureLayout; shelfAmbiences: ShelfAmbiences; liveZoneApply: boolean };
+}
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Application root not found");
@@ -61,8 +69,22 @@ let rgbBrightness = 128;
 let whiteUpdateTimer: number | undefined;
 let zoneApplyTimer: number | undefined;
 let liveZoneApply = localStorage.getItem("led2.liveZoneApply") !== "false";
+let stateSyncTimer: number | undefined;
+let stateSyncInFlight = false;
+let stateSyncFailures = 0;
+let stateSyncPausedUntil = 0;
+let lastStateFingerprint = "";
 let deferredInstallPrompt: InstallPrompt | null = null;
 let installMessage = "";
+let shelfAmbiences = loadShelfAmbiences();
+let ambienceMessage = "";
+let backupMessage = "";
+let selectionUndo: boolean[][] = [];
+let selectionRedo: boolean[][] = [];
+let rangeMode = false;
+let rangeAnchor: number | null = null;
+let dragActive = false;
+let dragValue = true;
 
 window.addEventListener("beforeinstallprompt", event => { event.preventDefault(); deferredInstallPrompt = event as InstallPrompt; render(); });
 window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; installMessage = "LED2 est installée."; render(); });
@@ -77,6 +99,22 @@ function loadFurnitureLayout(): FurnitureLayout {
   } catch { /* use the estimated layout */ }
   return { bottomEnd: 42, middleEnd: 55 };
 }
+function defaultShelfAmbiences(): ShelfAmbiences {
+  return {
+    bottom: { mode: "white", color: "#ff6432", temperature: 34, brightness: 105, effect: 0 },
+    middle: { mode: "white", color: "#ff8a45", temperature: 26, brightness: 90, effect: 0 },
+    top: { mode: "white", color: "#ffb060", temperature: 38, brightness: 115, effect: 0 },
+  };
+}
+function loadShelfAmbiences(): ShelfAmbiences {
+  const defaults = defaultShelfAmbiences();
+  try {
+    const saved = JSON.parse(localStorage.getItem("led2.shelfAmbiences") || "null") as Partial<ShelfAmbiences> | null;
+    if (!saved) return defaults;
+    return Object.fromEntries((Object.keys(defaults) as ShelfId[]).map(id => [id, { ...defaults[id], ...saved[id] }])) as ShelfAmbiences;
+  } catch { return defaults; }
+}
+function saveShelfAmbiences() { localStorage.setItem("led2.shelfAmbiences", JSON.stringify(shelfAmbiences)); }
 function saveScenes() { localStorage.setItem("led2.scenes", JSON.stringify(scenes)); }
 function firstColor() { const color = state.seg[0]?.col?.[0] || [255, 98, 50]; return `#${color.map(value => value.toString(16).padStart(2, "0")).join("")}`; }
 function fetchLocal(input: string, init: RequestInit = {}) { return fetch(input, { ...init, targetAddressSpace: "local" } as LocalRequestInit); }
@@ -93,6 +131,77 @@ function hostFrom(value: string) {
   try { return new URL(value.includes("://") ? value : `http://${value}`).hostname; }
   catch { return ""; }
 }
+
+function stateFingerprint(value: WledState) {
+  return JSON.stringify({ on: value.on, bri: value.bri, seg: value.seg?.map(segment => ({ start: segment.start, stop: segment.stop, grp: segment.grp, spc: segment.spc, on: segment.on, bri: segment.bri, col: segment.col, fx: segment.fx, sx: segment.sx, ix: segment.ix, n: segment.n })) });
+}
+
+function zonesFromSegments(value: WledState) {
+  if (!value.on) return Array.from({ length: TOTAL_ZONES }, () => false);
+  const segments = value.seg || [];
+  if (!segments.length || segments.some(segment => (segment.stop || 0) > TOTAL_ZONES * 2 || ((segment.spc || 0) !== 1 && (segment.stop || 0) > 0))) return null;
+  const next = Array.from({ length: TOTAL_ZONES }, () => false);
+  for (const segment of segments) {
+    if (!segment.on || !segment.stop) continue;
+    const start = Math.max(0, segment.start || 0);
+    const stop = Math.min(TOTAL_ZONES * 2, segment.stop);
+    for (let pixel = start; pixel < stop; pixel += 2) next[Math.floor(pixel / 2)] = true;
+  }
+  return next;
+}
+
+function applyRemoteState(next: WledState) {
+  const fingerprint = stateFingerprint(next);
+  const changed = fingerprint !== lastStateFingerprint;
+  lastStateFingerprint = fingerprint;
+  state = next;
+  activeSegmentCount = next.seg?.length || 0;
+  isMatrixMode = activeSegmentCount === 1 && (next.seg[0]?.stop || 0) > 100 && (next.seg[0]?.spc || 0) === 0;
+  const reconstructed = zonesFromSegments(next);
+  if (reconstructed) zoneState = reconstructed;
+  const rgbSegment = next.seg?.find(segment => (segment.start || 0) % 2 === 0 && segment.col?.[0]);
+  const whiteSegment = next.seg?.find(segment => (segment.start || 0) % 2 === 1 && segment.col?.[0]);
+  if (rgbSegment?.col?.[0]) {
+    const [r = 0, g = 0, b = 0] = rgbSegment.col[0];
+    currentColors = { ...currentColors, r, g, b };
+    if (rgbSegment.bri !== undefined) rgbBrightness = rgbSegment.bri;
+  }
+  if (whiteSegment?.col?.[0]) {
+    const [wr = 0, wg = 0, wb = 0] = whiteSegment.col[0];
+    currentColors = { ...currentColors, wr, wg, wb };
+    if (whiteSegment.bri !== undefined) whiteBrightness = whiteSegment.bri;
+  }
+  const rgbOn = next.seg?.some(segment => Boolean(segment.on) && (segment.start || 0) % 2 === 0);
+  const whiteOn = next.seg?.some(segment => Boolean(segment.on) && (segment.start || 0) % 2 === 1);
+  fusionEnabled = Boolean(rgbOn && whiteOn);
+  if (whiteOn && !rgbOn) activeChannel = "white";
+  if (rgbOn && !whiteOn) activeChannel = "rgb";
+  return changed;
+}
+
+async function pollState() {
+  if (!baseUrl || stateSyncInFlight || Date.now() < stateSyncPausedUntil || document.hidden) return;
+  stateSyncInFlight = true;
+  try {
+    const response = await fetchLocal(`${baseUrl}/json/state`, { signal: AbortSignal.timeout(3500) });
+    if (!response.ok) throw new Error("sync failed");
+    const changed = applyRemoteState(await response.json() as WledState);
+    stateSyncFailures = 0;
+    const recovered = connectionState !== "connected";
+    connectionState = "connected";
+    if (changed || recovered) render();
+  } catch {
+    stateSyncFailures += 1;
+    if (stateSyncFailures >= 3 && connectionState !== "error") { connectionState = "error"; render(); }
+  } finally { stateSyncInFlight = false; }
+}
+
+function startStateSync() {
+  if (stateSyncTimer !== undefined) window.clearInterval(stateSyncTimer);
+  stateSyncTimer = window.setInterval(() => { void pollState(); }, 2500);
+}
+
+document.addEventListener("visibilitychange", () => { if (!document.hidden && connectionState !== "idle") void pollState(); });
 
 function furnitureShelves() {
   return [
@@ -140,8 +249,28 @@ function renderFurnitureSelector() {
   </div>`;
 }
 
+function renderShelfAmbiences() {
+  return `<section class="ambience-panel"><div class="section-title"><div><p class="eyebrow">AMBIANCES PAR ÉTAGÈRE</p><h2>Trois zones, trois atmosphères</h2></div><button id="apply-ambiences" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>Appliquer</button></div>
+    ${ambienceMessage ? `<p class="group-message">${ambienceMessage}</p>` : ""}
+    <div class="ambience-grid">${furnitureShelves().map(shelf => {
+      const value = shelfAmbiences[shelf.id];
+      return `<article class="ambience-card" data-ambience-card="${shelf.id}"><div><strong>${shelf.name}</strong><small>Zones ${shelf.start + 1}–${shelf.end}</small></div>
+        <label>Mode<select data-ambience-mode="${shelf.id}"><option value="off" ${value.mode === "off" ? "selected" : ""}>Éteint</option><option value="rgb" ${value.mode === "rgb" ? "selected" : ""}>Couleur RGB</option><option value="white" ${value.mode === "white" ? "selected" : ""}>Blanc</option></select></label>
+        <label class="ambience-color ${value.mode === "rgb" ? "" : "is-hidden"}">Couleur<input type="color" data-ambience-color="${shelf.id}" value="${value.color}" /></label>
+        <label class="ambience-temperature ${value.mode === "white" ? "" : "is-hidden"}">Température <span>${value.temperature}%</span><input type="range" min="0" max="100" data-ambience-temperature="${shelf.id}" value="${value.temperature}" /></label>
+        <label>Intensité <span>${Math.round(value.brightness / 2.55)}%</span><input type="range" min="0" max="255" data-ambience-brightness="${shelf.id}" value="${value.brightness}" /></label>
+      </article>`;
+    }).join("")}</div>
+    <div class="quick-scenes"><button data-quick-scene="tv" ${connectionState !== "connected" ? "disabled" : ""}>📺 TV</button><button data-quick-scene="evening" ${connectionState !== "connected" ? "disabled" : ""}>🌆 Soirée</button><button data-quick-scene="night" ${connectionState !== "connected" ? "disabled" : ""}>🌙 Veilleuse</button><button data-quick-scene="white" ${connectionState !== "connected" ? "disabled" : ""}>☀ Blanc total</button><button data-quick-scene="colors" ${connectionState !== "connected" ? "disabled" : ""}>🌈 Couleurs</button></div>
+  </section>`;
+}
+
+function renderBackupPanel() {
+  return `<section class="backup-panel"><div class="section-title"><div><p class="eyebrow">SAUVEGARDE COMPLÈTE</p><h2>Protéger la configuration</h2></div></div><p class="hint">Exporte la configuration WLED, les presets et les réglages LED2 dans un seul fichier.</p>${backupMessage ? `<p class="group-message">${backupMessage}</p>` : ""}<div class="backup-actions"><button id="backup-export" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>Télécharger la sauvegarde</button><label class="secondary-button file-button">Choisir une sauvegarde<input id="backup-file" type="file" accept="application/json,.json" /></label></div></section>`;
+}
+
 function render() {
-  const statusLabel = connectionState === "connected" ? "Connecté" : connectionState === "connecting" ? "Connexion…" : connectionState === "error" ? "Connexion impossible" : "Prêt à connecter";
+  const statusLabel = connectionState === "connected" ? "Connecté · synchronisé" : connectionState === "connecting" ? "Connexion…" : connectionState === "error" ? "Connexion interrompue" : "Prêt à connecter";
   const statusClass = connectionState === "connected" ? "online" : connectionState === "error" ? "error" : "";
   root.innerHTML = `
     <main class="shell">
@@ -163,7 +292,8 @@ function render() {
       <div class="device-tools"><div><p class="eyebrow">DÉCOUVERTE LOCALE</p><h3>Appareils sur le réseau</h3><p class="hint">LED2 tente d’identifier la forme de votre réseau avant de scanner les adresses.</p></div><div class="scan-row"><input id="network-prefix" type="text" value="${detectedPrefixes[0] || "192.168.1"}" aria-label="Préfixe réseau" /><button id="detect-button" class="secondary-button">Détecter</button><button id="scan-button" class="secondary-button">${scanning ? "Scan en cours…" : "Scanner"}</button></div>${scanMessage ? `<p class="hint">${scanMessage}</p>` : ""}${scanResults.length ? `<div class="device-list">${scanResults.map(device => `<button class="device-item" data-device-url="${device.url}"><span class="device-icon">✦</span><span><strong>${device.name}</strong><small>${device.url}</small></span><span>→</span></button>`).join("")}</div>` : ""}</div>
       ${savedDevices.length ? `<div class="saved-devices"><p class="eyebrow">MES APPAREILS</p>${savedDevices.map(device => `<button class="saved-device" data-saved-url="${device.url}"><span>${device.name}</span><small>${device.url}</small></button>`).join("")}</div>` : ""}
       <section class="wled-presets"><div class="section-title"><div><p class="eyebrow">PRESETS WLED</p><h2>Mémoires de l’appareil</h2></div><button id="preset-record" class="secondary-button">${presetRecordMode ? "Annuler" : "Enregistrer"}</button></div>${presetMessage ? `<p class="group-message">${presetMessage}</p>` : ""}<div class="preset-grid">${[1,2,3,4].map(id => `<button class="preset-slot" data-preset="${id}" ${connectionState !== "connected" ? "disabled" : ""}>Mém. ${id}</button>`).join("")}</div></section>
-      <section class="zones-panel"><div class="section-title"><div><p class="eyebrow">PLAN DU MEUBLE · ${isMatrixMode ? "MATRIX HD" : "SEGMENTS"}</p><h2>Choisir les LED sur la photo</h2></div><button id="zones-toggle" class="secondary-button">${zonesOpen ? "Masquer les numéros" : "LED par LED"}</button></div>${renderFurnitureSelector()}<div class="map-actions"><div><button id="zones-all">Tout</button><button id="zones-none">Rien</button><button id="zones-pattern">1 sur 2</button></div><label><input id="live-zone-apply" type="checkbox" ${liveZoneApply ? "checked" : ""} ${connectionState !== "connected" ? "disabled" : ""} /> Application directe</label><span>${zoneState.filter(Boolean).length} sélectionnées</span></div>${layoutMessage ? `<p class="layout-message">${layoutMessage}</p>` : ""}${zonesOpen ? `<div class="layout-calibration"><p>Limites mesurées des étagères — modifiables si le ruban est déplacé.</p><label>Fin étagère basse<input id="bottom-end" type="number" min="1" max="95" value="${furnitureLayout.bottomEnd}" /></label><label>Fin petite étagère<input id="middle-end" type="number" min="2" max="96" value="${furnitureLayout.middleEnd}" /></label><button id="save-layout">Mémoriser</button></div><div class="zone-grid">${zoneState.map((active, index) => `<button class="zone-cell ${active ? "active" : ""}" data-zone="${index}">${index + 1}</button>`).join("")}</div>` : ""}<button id="zones-apply" class="primary-wide" ${connectionState !== "connected" ? "disabled" : ""}>Allumer la sélection (${zoneState.filter(Boolean).length})</button></section>
+      <section class="zones-panel"><div class="section-title"><div><p class="eyebrow">PLAN DU MEUBLE · ${isMatrixMode ? "MATRIX HD" : "SEGMENTS"}</p><h2>Choisir les LED sur la photo</h2></div><button id="zones-toggle" class="secondary-button">${zonesOpen ? "Masquer les numéros" : "LED par LED"}</button></div>${renderFurnitureSelector()}<div class="map-actions"><div><button id="zones-all">Tout</button><button id="zones-none">Rien</button><button id="zones-pattern">1 sur 2</button><button id="zones-range" class="${rangeMode ? "active" : ""}">${rangeAnchor === null ? "Plage" : `De ${rangeAnchor + 1} à…`}</button><button id="zones-undo" ${selectionUndo.length ? "" : "disabled"}>↶</button><button id="zones-redo" ${selectionRedo.length ? "" : "disabled"}>↷</button></div><label><input id="live-zone-apply" type="checkbox" ${liveZoneApply ? "checked" : ""} ${connectionState !== "connected" ? "disabled" : ""} /> Application directe</label><span>${zoneState.filter(Boolean).length} sélectionnées</span></div><p class="selection-help">Touchez une LED, faites glisser sur la photo, ou utilisez « Plage » pour sélectionner deux extrémités.</p>${layoutMessage ? `<p class="layout-message">${layoutMessage}</p>` : ""}${zonesOpen ? `<div class="layout-calibration"><p>Limites mesurées des étagères — modifiables si le ruban est déplacé.</p><label>Fin étagère basse<input id="bottom-end" type="number" min="1" max="95" value="${furnitureLayout.bottomEnd}" /></label><label>Fin petite étagère<input id="middle-end" type="number" min="2" max="96" value="${furnitureLayout.middleEnd}" /></label><button id="save-layout">Mémoriser</button></div><div class="zone-grid">${zoneState.map((active, index) => `<button class="zone-cell ${active ? "active" : ""}" data-zone="${index}">${index + 1}</button>`).join("")}</div>` : ""}<button id="zones-apply" class="primary-wide" ${connectionState !== "connected" ? "disabled" : ""}>Allumer la sélection (${zoneState.filter(Boolean).length})</button></section>
+      ${renderShelfAmbiences()}
       <section class="white-panel ${activeChannel === "white" || fusionEnabled ? "active-mode" : "inactive-mode"}"><div class="section-title"><div><p class="eyebrow">☀ CANAL BLANC</p><h2>Blanc et température</h2></div><label class="fusion-toggle"><input id="fusion-toggle" type="checkbox" ${fusionEnabled ? "checked" : ""} ${connectionState !== "connected" ? "disabled" : ""} /> Fusion</label></div><div class="temperature-labels"><span>Chaud</span><span>Froid</span></div><div class="white-controls"><label>Température<input id="white-temperature" class="cct-range" type="range" min="0" max="100" value="${whiteTemperature}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label>Intensité<input id="white-level" type="range" min="0" max="255" value="${whiteBrightness}" ${connectionState !== "connected" ? "disabled" : ""} /></label></div></section>
       <section class="dashboard ${connectionState !== "connected" ? "muted" : ""}">
         <div class="section-title"><div><p class="eyebrow">ESPACE DE CONTRÔLE</p><h2>${deviceName}</h2></div><span class="locked">${connectionState === "connected" ? "ACTIF" : "EN ATTENTE"}</span></div>
@@ -171,6 +301,7 @@ function render() {
       <div class="effect-panel"><span class="control-label">EFFET WLED ${isMatrixMode ? "· indisponible en Matrix" : ""}</span><input id="effect-search" class="effect-search" type="search" value="${effectSearch}" placeholder="Rechercher un effet" /><select id="effect" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""}>${effects.filter(effect => effect.label.toLowerCase().includes(effectSearch.toLowerCase())).map(effect => `<option value="${effect.id}" ${state.seg[0]?.fx === effect.id ? "selected" : ""}>${effect.label}</option>`).join("")}</select><label class="mini-control">COULEUR<input id="color-picker" type="color" value="${firstColor()}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label class="mini-control">VITESSE<input id="effect-speed" type="range" min="0" max="255" value="${state.seg[0]?.sx ?? 128}" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""} /></label><label class="mini-control">INTENSITÉ<input id="effect-intensity" type="range" min="0" max="255" value="${state.seg[0]?.ix ?? 128}" ${connectionState !== "connected" || isMatrixMode ? "disabled" : ""} /></label></div>
       </section>
       <section class="scenes-panel"><div class="section-title"><div><p class="eyebrow">MES SCÈNES</p><h2>Presets lumineux</h2></div><button id="save-scene" class="secondary-button" ${connectionState !== "connected" ? "disabled" : ""}>+ Enregistrer</button></div>${groupMessage ? `<p class="group-message">${groupMessage}</p>` : ""}${scenes.length ? `<div class="scene-list">${scenes.map(scene => `<article class="scene-item"><button class="scene-apply" data-scene-id="${scene.id}"><span class="scene-swatch" style="background:${firstColorFrom(scene.state)}"></span><span><strong>${scene.name}</strong><small>${scene.state.on ? "Allumé" : "Éteint"} · ${Math.round(scene.state.bri / 255 * 100)}%</small></span></button><button class="scene-group" data-group-scene-id="${scene.id}" ${savedDevices.length < 2 ? "disabled" : ""} aria-label="Appliquer ${scene.name} à tous">Tous</button><button class="scene-delete" data-delete-scene="${scene.id}" aria-label="Supprimer ${scene.name}">×</button></article>`).join("")}</div>` : `<p class="hint">Aucune scène enregistrée pour le moment.</p>`}</section>
+      ${renderBackupPanel()}
       <button id="master-power" class="master-power ${state.on ? "active" : ""}" aria-label="Alimentation générale">⏻</button>
     </main>`;
 
@@ -195,10 +326,14 @@ function render() {
   document.querySelectorAll<HTMLButtonElement>("[data-group-scene-id]").forEach(button => button.addEventListener("click", () => applySceneToAll(button.dataset.groupSceneId || "")));
   document.querySelector<HTMLButtonElement>("#zones-toggle")?.addEventListener("click", () => { zonesOpen = !zonesOpen; render(); });
   document.querySelectorAll<HTMLButtonElement>("[data-shelf]").forEach(button => button.addEventListener("click", () => toggleShelf(button.dataset.shelf as ShelfId)));
-  document.querySelectorAll<HTMLButtonElement>("[data-zone]").forEach(button => button.addEventListener("click", () => { const index = Number(button.dataset.zone); zoneState[index] = !zoneState[index]; zoneSelectionChanged(); }));
-  document.querySelector<HTMLButtonElement>("#zones-all")?.addEventListener("click", () => { zoneState = zoneState.map(() => true); zoneSelectionChanged(); });
-  document.querySelector<HTMLButtonElement>("#zones-none")?.addEventListener("click", () => { zoneState = zoneState.map(() => false); zoneSelectionChanged(); });
-  document.querySelector<HTMLButtonElement>("#zones-pattern")?.addEventListener("click", () => { zoneState = zoneState.map((_, index) => index % 2 === 0); zoneSelectionChanged(); });
+  document.querySelectorAll<HTMLButtonElement>(".zone-cell").forEach(button => button.addEventListener("click", () => selectZone(Number(button.dataset.zone))));
+  bindFurnitureGestures();
+  document.querySelector<HTMLButtonElement>("#zones-all")?.addEventListener("click", () => replaceZoneSelection(zoneState.map(() => true)));
+  document.querySelector<HTMLButtonElement>("#zones-none")?.addEventListener("click", () => replaceZoneSelection(zoneState.map(() => false)));
+  document.querySelector<HTMLButtonElement>("#zones-pattern")?.addEventListener("click", () => replaceZoneSelection(zoneState.map((_, index) => index % 2 === 0)));
+  document.querySelector<HTMLButtonElement>("#zones-range")?.addEventListener("click", () => { rangeMode = !rangeMode; rangeAnchor = null; render(); });
+  document.querySelector<HTMLButtonElement>("#zones-undo")?.addEventListener("click", undoZoneSelection);
+  document.querySelector<HTMLButtonElement>("#zones-redo")?.addEventListener("click", redoZoneSelection);
   document.querySelector<HTMLInputElement>("#live-zone-apply")?.addEventListener("change", event => { liveZoneApply = (event.target as HTMLInputElement).checked; localStorage.setItem("led2.liveZoneApply", String(liveZoneApply)); if (liveZoneApply) scheduleZoneApply(); render(); });
   document.querySelector<HTMLButtonElement>("#save-layout")?.addEventListener("click", saveFurnitureLayout);
   document.querySelector<HTMLButtonElement>("#zones-apply")?.addEventListener("click", applyZones);
@@ -208,6 +343,9 @@ function render() {
   document.querySelector<HTMLInputElement>("#white-temperature")?.addEventListener("input", event => { whiteTemperature = Number((event.target as HTMLInputElement).value); scheduleWhiteUpdate(); });
   document.querySelector<HTMLInputElement>("#rgb-level")?.addEventListener("input", event => { rgbBrightness = Number((event.target as HTMLInputElement).value); updateRgbBrightness(); });
   document.querySelector<HTMLInputElement>("#fusion-toggle")?.addEventListener("change", event => { fusionEnabled = (event.target as HTMLInputElement).checked; activateChannel(activeChannel); });
+  bindAmbienceControls();
+  document.querySelector<HTMLButtonElement>("#backup-export")?.addEventListener("click", exportBackup);
+  document.querySelector<HTMLInputElement>("#backup-file")?.addEventListener("change", importBackup);
   initializeColorWheel();
 }
 
@@ -225,13 +363,100 @@ function saveCurrentScene() { const name = window.prompt("Nom de la scène", `Sc
 function applyScene(id: string) { const scene = scenes.find(item => item.id === id); if (!scene) return; state = structuredClone(scene.state); render(); updateState(state); }
 function deleteScene(id: string) { scenes = scenes.filter(scene => scene.id !== id); saveScenes(); render(); }
 async function applySceneToAll(id: string) { const scene = scenes.find(item => item.id === id); if (!scene || savedDevices.length < 2) return; groupMessage = "Application de la scène sur les appareils…"; render(); const results = await Promise.allSettled(savedDevices.map(device => fetchLocal(`${device.url}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scene.state), signal: AbortSignal.timeout(5000) }))); const success = results.filter(result => result.status === "fulfilled" && result.value.ok).length; groupMessage = `${success} / ${savedDevices.length} appareil(s) mis à jour.`; render(); }
-async function sendWledState(payload: unknown) { if (connectionState !== "connected") return false; const response = await fetchLocal(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(`WLED state rejected: ${response.status}`); return true; }
+async function sendWledState(payload: unknown) {
+  if (connectionState !== "connected") return false;
+  stateSyncPausedUntil = Date.now() + 900;
+  const response = await fetchLocal(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error(`WLED state rejected: ${response.status}`);
+  try {
+    const result = await response.json() as Partial<WledState>;
+    if (typeof result.on === "boolean" && Array.isArray(result.seg)) applyRemoteState(result as WledState);
+  } catch { /* some WLED builds return an empty success response */ }
+  return true;
+}
+function rememberZoneSelection() {
+  selectionUndo.push([...zoneState]);
+  if (selectionUndo.length > 30) selectionUndo.shift();
+  selectionRedo = [];
+}
+function replaceZoneSelection(next: boolean[]) {
+  rememberZoneSelection();
+  zoneState = [...next];
+  zoneSelectionChanged();
+}
+function selectZone(index: number) {
+  if (!Number.isInteger(index) || index < 0 || index >= TOTAL_ZONES) return;
+  if (rangeMode) {
+    if (rangeAnchor === null) { rangeAnchor = index; layoutMessage = `Début de plage : LED ${index + 1}. Touchez la dernière LED.`; render(); return; }
+    rememberZoneSelection();
+    const first = Math.min(rangeAnchor, index);
+    const last = Math.max(rangeAnchor, index);
+    const shouldSelect = !zoneState.slice(first, last + 1).every(Boolean);
+    zoneState = zoneState.map((active, zone) => zone >= first && zone <= last ? shouldSelect : active);
+    layoutMessage = `Plage ${first + 1}–${last + 1} ${shouldSelect ? "sélectionnée" : "désélectionnée"}.`;
+    rangeAnchor = null;
+    rangeMode = false;
+    zoneSelectionChanged();
+    return;
+  }
+  rememberZoneSelection();
+  zoneState[index] = !zoneState[index];
+  zoneSelectionChanged();
+}
+function undoZoneSelection() {
+  const previous = selectionUndo.pop();
+  if (!previous) return;
+  selectionRedo.push([...zoneState]);
+  zoneState = previous;
+  zoneSelectionChanged();
+}
+function redoZoneSelection() {
+  const next = selectionRedo.pop();
+  if (!next) return;
+  selectionUndo.push([...zoneState]);
+  zoneState = next;
+  zoneSelectionChanged();
+}
+function bindFurnitureGestures() {
+  const map = document.querySelector<HTMLElement>(".furniture-map");
+  if (!map) return;
+  const zoneAt = (clientX: number, clientY: number) => {
+    let nearest = -1;
+    let distance = Number.POSITIVE_INFINITY;
+    map.querySelectorAll<HTMLElement>(".led-marker").forEach(marker => {
+      const rect = marker.getBoundingClientRect();
+      const nextDistance = Math.hypot(clientX - (rect.left + rect.width / 2), clientY - (rect.top + rect.height / 2));
+      if (nextDistance < distance) { distance = nextDistance; nearest = Number(marker.dataset.zone); }
+    });
+    return distance < 32 ? nearest : -1;
+  };
+  const paint = (index: number) => {
+    if (index < 0 || zoneState[index] === dragValue) return;
+    zoneState[index] = dragValue;
+    map.querySelector<HTMLElement>(`.led-marker[data-zone="${index}"]`)?.classList.toggle("active", dragValue);
+  };
+  map.addEventListener("pointerdown", event => {
+    const index = zoneAt(event.clientX, event.clientY);
+    if (index < 0) return;
+    event.preventDefault();
+    if (rangeMode) { selectZone(index); return; }
+    rememberZoneSelection();
+    dragActive = true;
+    dragValue = !zoneState[index];
+    paint(index);
+    map.setPointerCapture(event.pointerId);
+  });
+  map.addEventListener("pointermove", event => { if (dragActive) paint(zoneAt(event.clientX, event.clientY)); });
+  const finish = () => { if (!dragActive) return; dragActive = false; zoneSelectionChanged(); };
+  map.addEventListener("pointerup", finish);
+  map.addEventListener("pointercancel", finish);
+  map.querySelectorAll<HTMLButtonElement>(".led-marker").forEach(button => button.addEventListener("click", event => { if (event.detail === 0) selectZone(Number(button.dataset.zone)); }));
+}
 function toggleShelf(id: ShelfId) {
   const shelf = furnitureShelves().find(item => item.id === id);
   if (!shelf) return;
   const shouldSelect = !zoneState.slice(shelf.start, shelf.end).every(Boolean);
-  zoneState = zoneState.map((active, index) => index >= shelf.start && index < shelf.end ? shouldSelect : active);
-  zoneSelectionChanged();
+  replaceZoneSelection(zoneState.map((active, index) => index >= shelf.start && index < shelf.end ? shouldSelect : active));
 }
 function zoneSelectionChanged() { render(); if (liveZoneApply) scheduleZoneApply(); }
 function scheduleZoneApply() {
@@ -300,6 +525,127 @@ async function applyZones() {
     }
     layoutMessage = `${zoneState.filter(Boolean).length} zone(s) appliquée(s) en mode ${isMatrixMode ? "Matrix HD" : "Segments"}.`;
   } catch { connectionState = "error"; layoutMessage = "Échec de l’application des zones. Vérifiez la connexion WLED."; }
+  render();
+}
+function colorFromTemperature(temperature: number) {
+  const value = Math.max(0, Math.min(100, temperature));
+  return value <= 50
+    ? [Math.floor((value / 50) * 255), 255, 0]
+    : [255, Math.floor(255 - ((value - 50) / 50) * 255), 0];
+}
+function hexToRgb(hex: string) { return [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16)); }
+async function applyShelfAmbiences() {
+  if (connectionState !== "connected") return;
+  ambienceMessage = "Application des trois étagères…";
+  render();
+  const segments: Array<Record<string, unknown>> = [];
+  furnitureShelves().forEach((shelf, shelfIndex) => {
+    const ambience = shelfAmbiences[shelf.id];
+    const rgb = hexToRgb(ambience.color);
+    const white = colorFromTemperature(ambience.temperature);
+    segments.push({ id: shelfIndex * 2, start: shelf.start * 2, stop: shelf.end * 2, grp: 1, spc: 1, of: 0, on: ambience.mode === "rgb", bri: ambience.brightness, fx: ambience.mode === "rgb" ? ambience.effect : 0, sx: 128, ix: 128, n: `${shelf.name} RGB`, col: [rgb] });
+    segments.push({ id: shelfIndex * 2 + 1, start: shelf.start * 2 + 1, stop: shelf.end * 2 + 1, grp: 1, spc: 1, of: 0, on: ambience.mode === "white", bri: ambience.brightness, fx: 0, n: `${shelf.name} blanc`, col: [white] });
+  });
+  for (let id = 6; id < 30; id++) segments.push({ id, stop: 0 });
+  try {
+    await sendWledState({ on: true, seg: segments });
+    zoneState = zoneState.map(() => true);
+    activeSegmentCount = 6;
+    isMatrixMode = false;
+    ambienceMessage = "Ambiances appliquées aux trois étagères.";
+  } catch {
+    connectionState = "error";
+    ambienceMessage = "WLED n’a pas accepté les ambiances.";
+  }
+  render();
+}
+function setQuickScene(scene: string) {
+  const solid = 0;
+  const dynamic = effects.find(effect => /rainbow|colorloop|flow/i.test(effect.label))?.id ?? 9;
+  if (scene === "tv") shelfAmbiences = {
+    bottom: { mode: "white", color: "#ff7038", temperature: 30, brightness: 55, effect: solid },
+    middle: { mode: "off", color: "#ff7038", temperature: 30, brightness: 0, effect: solid },
+    top: { mode: "white", color: "#ff7038", temperature: 34, brightness: 42, effect: solid },
+  };
+  if (scene === "evening") shelfAmbiences = {
+    bottom: { mode: "white", color: "#ff8a45", temperature: 18, brightness: 95, effect: solid },
+    middle: { mode: "rgb", color: "#ff5a24", temperature: 20, brightness: 62, effect: solid },
+    top: { mode: "white", color: "#ff8a45", temperature: 24, brightness: 82, effect: solid },
+  };
+  if (scene === "night") shelfAmbiences = {
+    bottom: { mode: "rgb", color: "#ff2408", temperature: 10, brightness: 18, effect: solid },
+    middle: { mode: "off", color: "#ff2408", temperature: 10, brightness: 0, effect: solid },
+    top: { mode: "off", color: "#ff2408", temperature: 10, brightness: 0, effect: solid },
+  };
+  if (scene === "white") shelfAmbiences = {
+    bottom: { mode: "white", color: "#ffffff", temperature: 45, brightness: 180, effect: solid },
+    middle: { mode: "white", color: "#ffffff", temperature: 45, brightness: 180, effect: solid },
+    top: { mode: "white", color: "#ffffff", temperature: 45, brightness: 180, effect: solid },
+  };
+  if (scene === "colors") shelfAmbiences = {
+    bottom: { mode: "rgb", color: "#ff1744", temperature: 50, brightness: 145, effect: dynamic },
+    middle: { mode: "rgb", color: "#7c4dff", temperature: 50, brightness: 125, effect: dynamic },
+    top: { mode: "rgb", color: "#00b0ff", temperature: 50, brightness: 145, effect: dynamic },
+  };
+  saveShelfAmbiences();
+  void applyShelfAmbiences();
+}
+function bindAmbienceControls() {
+  document.querySelector<HTMLButtonElement>("#apply-ambiences")?.addEventListener("click", () => void applyShelfAmbiences());
+  document.querySelectorAll<HTMLSelectElement>("[data-ambience-mode]").forEach(input => input.addEventListener("change", () => {
+    const id = input.dataset.ambienceMode as ShelfId;
+    shelfAmbiences[id].mode = input.value as ShelfMode;
+    saveShelfAmbiences(); render();
+  }));
+  document.querySelectorAll<HTMLInputElement>("[data-ambience-color]").forEach(input => input.addEventListener("input", () => { shelfAmbiences[input.dataset.ambienceColor as ShelfId].color = input.value; saveShelfAmbiences(); }));
+  document.querySelectorAll<HTMLInputElement>("[data-ambience-temperature]").forEach(input => input.addEventListener("change", () => { shelfAmbiences[input.dataset.ambienceTemperature as ShelfId].temperature = Number(input.value); saveShelfAmbiences(); render(); }));
+  document.querySelectorAll<HTMLInputElement>("[data-ambience-brightness]").forEach(input => input.addEventListener("change", () => { shelfAmbiences[input.dataset.ambienceBrightness as ShelfId].brightness = Number(input.value); saveShelfAmbiences(); render(); }));
+  document.querySelectorAll<HTMLButtonElement>("[data-quick-scene]").forEach(button => button.addEventListener("click", () => setQuickScene(button.dataset.quickScene || "")));
+}
+async function fetchJsonOptional(path: string) {
+  try { const response = await fetchLocal(`${baseUrl}${path}`, { signal: AbortSignal.timeout(6000) }); return response.ok ? await response.json() : undefined; }
+  catch { return undefined; }
+}
+async function exportBackup() {
+  backupMessage = "Lecture de la configuration WLED…"; render();
+  const [cfg, currentState, presets] = await Promise.all([fetchJsonOptional("/json/cfg"), fetchJsonOptional("/json/state"), fetchJsonOptional("/presets.json")]);
+  const backup: Led2Backup = { format: "led2-backup", version: 1, createdAt: new Date().toISOString(), wled: { cfg, state: currentState, presets }, app: { devices: savedDevices, scenes, furnitureLayout, shelfAmbiences, liveZoneApply } };
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
+  link.download = `led2-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  backupMessage = cfg && presets ? "Sauvegarde complète téléchargée." : "Sauvegarde téléchargée, mais certains éléments WLED n’étaient pas accessibles.";
+  render();
+}
+async function importBackup(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  backupMessage = "Restauration en cours…"; render();
+  try {
+    const backup = JSON.parse(await file.text()) as Led2Backup;
+    if (backup.format !== "led2-backup" || backup.version !== 1 || !backup.app) throw new Error("format");
+    savedDevices = Array.isArray(backup.app.devices) ? backup.app.devices : savedDevices;
+    scenes = Array.isArray(backup.app.scenes) ? backup.app.scenes : scenes;
+    furnitureLayout = backup.app.furnitureLayout || furnitureLayout;
+    shelfAmbiences = backup.app.shelfAmbiences || shelfAmbiences;
+    liveZoneApply = backup.app.liveZoneApply !== false;
+    localStorage.setItem("led2.devices", JSON.stringify(savedDevices)); saveScenes();
+    localStorage.setItem("led2.furnitureLayout", JSON.stringify(furnitureLayout)); saveShelfAmbiences();
+    localStorage.setItem("led2.liveZoneApply", String(liveZoneApply));
+    if (connectionState === "connected" && backup.wled.cfg) {
+      const cfgResponse = await fetchLocal(`${baseUrl}/json/cfg`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(backup.wled.cfg), signal: AbortSignal.timeout(10000) });
+      if (!cfgResponse.ok) throw new Error("cfg");
+    }
+    if (connectionState === "connected" && backup.wled.presets) {
+      const form = new FormData();
+      form.append("data", new Blob([JSON.stringify(backup.wled.presets)], { type: "application/json" }), "/presets.json");
+      const presetResponse = await fetchLocal(`${baseUrl}/edit`, { method: "POST", body: form, signal: AbortSignal.timeout(10000) });
+      if (!presetResponse.ok) throw new Error("presets");
+    }
+    if (connectionState === "connected" && backup.wled.state) await sendWledState(backup.wled.state);
+    backupMessage = connectionState === "connected" ? "Configuration WLED et réglages LED2 restaurés." : "Réglages LED2 restaurés. Connectez WLED pour restaurer aussi l’appareil.";
+  } catch { backupMessage = "Ce fichier n’est pas une sauvegarde LED2 valide, ou WLED a refusé la restauration."; }
   render();
 }
 async function useWledPreset(id: number) { if (connectionState !== "connected") return; presetMessage = presetRecordMode ? `Enregistrement de la mémoire ${id}…` : `Chargement de la mémoire ${id}…`; render(); try { const payload = presetRecordMode ? { psave: id } : { ps: id }; const response = await fetchLocal(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(); presetRecordMode = false; presetMessage = `Mémoire ${id} ${payload.psave ? "enregistrée" : "chargée"}.`; } catch { presetMessage = `Impossible de modifier la mémoire ${id}.`; } render(); }
@@ -434,11 +780,7 @@ async function connect(event: SubmitEvent) {
   try {
     const response = await fetchLocal(`${baseUrl}/json/state`, { signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error("Device unavailable");
-    state = await response.json() as WledState;
-    activeSegmentCount = state.seg?.length || 0;
-    isMatrixMode = activeSegmentCount === 1 && (state.seg[0]?.stop || 0) > 100;
-    const rgb = state.seg?.[0]?.col?.[0];
-    if (rgb) currentColors = { ...currentColors, r: rgb[0] || 0, g: rgb[1] || 0, b: rgb[2] || 0 };
+    applyRemoteState(await response.json() as WledState);
     await fetchEffectsList();
     const info = await fetchLocal(`${baseUrl}/json/info`, { signal: AbortSignal.timeout(5000) });
     if (info.ok) deviceName = ((await info.json()) as { name?: string }).name || "Appareil WLED";
@@ -449,6 +791,8 @@ async function connect(event: SubmitEvent) {
       detectedPrefixes = [connectedPrefix, ...detectedPrefixes.filter(prefix => prefix !== connectedPrefix)];
       localStorage.setItem("led2.networkPrefix", connectedPrefix);
     }
+    stateSyncFailures = 0;
+    startStateSync();
   } catch {
     connectionState = "error";
   }
@@ -459,7 +803,7 @@ async function updateState(patch: Partial<WledState>) {
   state = { ...state, ...patch };
   render();
   if (connectionState !== "connected") return;
-  try { const response = await fetchLocal(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error("WLED rejected state update"); }
+  try { await sendWledState(patch); }
   catch { connectionState = "error"; render(); }
 }
 
