@@ -25,6 +25,7 @@ LED2 doit rendre le contrôle de WLED simple pour une personne non technique, to
 - Effet et paramètres principaux
 - Presets récupérés depuis WLED
 - Messages d’erreur exploitables
+- Sélection visuelle des zones sur une photo du meuble, avec raccourcis par étagère
 
 ## Hors périmètre initial
 

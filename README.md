@@ -17,6 +17,8 @@ Les scènes enregistrées peuvent aussi être envoyées en parallèle à tous le
 
 La version PWA reprend maintenant le moteur WLED V34 Matrix fourni : 97 zones/194 LED, modes Segments et Matrix HD, canaux RGB et blanc indépendants, fusion, presets matériels, liste dynamique des effets et réglages vitesse/intensité.
 
+La vue « Plan du meuble » utilise une photo locale pour sélectionner directement l’étagère basse, la petite étagère ou l’étagère haute. Les deux limites entre étagères sont réglables et mémorisées localement ; la grille numérotée reste disponible pour sélectionner chaque zone séparément.
+
 Pour un fonctionnement iPhone uniquement sur le Wi-Fi, sans Home Assistant ni cloud, LED2 peut être hébergée directement par WLED. Voir [`docs/WLED_WIFI.md`](docs/WLED_WIFI.md).
 
 Par sécurité, aucun token Home Assistant n'est intégré au JavaScript public. Toute future connexion Home Assistant devra passer par une configuration locale ou un proxy authentifié.
