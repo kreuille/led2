@@ -59,6 +59,8 @@ let whiteBrightness = 128;
 let whiteTemperature = 50;
 let rgbBrightness = 128;
 let whiteUpdateTimer: number | undefined;
+let zoneApplyTimer: number | undefined;
+let liveZoneApply = localStorage.getItem("led2.liveZoneApply") !== "false";
 let deferredInstallPrompt: InstallPrompt | null = null;
 let installMessage = "";
 
@@ -161,7 +163,7 @@ function render() {
       <div class="device-tools"><div><p class="eyebrow">DÉCOUVERTE LOCALE</p><h3>Appareils sur le réseau</h3><p class="hint">LED2 tente d’identifier la forme de votre réseau avant de scanner les adresses.</p></div><div class="scan-row"><input id="network-prefix" type="text" value="${detectedPrefixes[0] || "192.168.1"}" aria-label="Préfixe réseau" /><button id="detect-button" class="secondary-button">Détecter</button><button id="scan-button" class="secondary-button">${scanning ? "Scan en cours…" : "Scanner"}</button></div>${scanMessage ? `<p class="hint">${scanMessage}</p>` : ""}${scanResults.length ? `<div class="device-list">${scanResults.map(device => `<button class="device-item" data-device-url="${device.url}"><span class="device-icon">✦</span><span><strong>${device.name}</strong><small>${device.url}</small></span><span>→</span></button>`).join("")}</div>` : ""}</div>
       ${savedDevices.length ? `<div class="saved-devices"><p class="eyebrow">MES APPAREILS</p>${savedDevices.map(device => `<button class="saved-device" data-saved-url="${device.url}"><span>${device.name}</span><small>${device.url}</small></button>`).join("")}</div>` : ""}
       <section class="wled-presets"><div class="section-title"><div><p class="eyebrow">PRESETS WLED</p><h2>Mémoires de l’appareil</h2></div><button id="preset-record" class="secondary-button">${presetRecordMode ? "Annuler" : "Enregistrer"}</button></div>${presetMessage ? `<p class="group-message">${presetMessage}</p>` : ""}<div class="preset-grid">${[1,2,3,4].map(id => `<button class="preset-slot" data-preset="${id}" ${connectionState !== "connected" ? "disabled" : ""}>Mém. ${id}</button>`).join("")}</div></section>
-      <section class="zones-panel"><div class="section-title"><div><p class="eyebrow">PLAN DU MEUBLE · ${isMatrixMode ? "MATRIX HD" : "SEGMENTS"}</p><h2>Choisir les LED sur la photo</h2></div><button id="zones-toggle" class="secondary-button">${zonesOpen ? "Masquer les numéros" : "LED par LED"}</button></div>${renderFurnitureSelector()}${layoutMessage ? `<p class="layout-message">${layoutMessage}</p>` : ""}${zonesOpen ? `<div class="layout-calibration"><p>Limites mesurées des étagères — modifiables si le ruban est déplacé.</p><label>Fin étagère basse<input id="bottom-end" type="number" min="1" max="95" value="${furnitureLayout.bottomEnd}" /></label><label>Fin petite étagère<input id="middle-end" type="number" min="2" max="96" value="${furnitureLayout.middleEnd}" /></label><button id="save-layout">Mémoriser</button></div><div class="zone-actions"><button id="zones-all">Tout</button><button id="zones-none">Rien</button><button id="zones-pattern">1 sur 2</button><span>${zoneState.filter(Boolean).length} sélectionnées</span></div><div class="zone-grid">${zoneState.map((active, index) => `<button class="zone-cell ${active ? "active" : ""}" data-zone="${index}">${index + 1}</button>`).join("")}</div>` : ""}<button id="zones-apply" class="primary-wide" ${connectionState !== "connected" ? "disabled" : ""}>Allumer la sélection (${zoneState.filter(Boolean).length})</button></section>
+      <section class="zones-panel"><div class="section-title"><div><p class="eyebrow">PLAN DU MEUBLE · ${isMatrixMode ? "MATRIX HD" : "SEGMENTS"}</p><h2>Choisir les LED sur la photo</h2></div><button id="zones-toggle" class="secondary-button">${zonesOpen ? "Masquer les numéros" : "LED par LED"}</button></div>${renderFurnitureSelector()}<div class="map-actions"><div><button id="zones-all">Tout</button><button id="zones-none">Rien</button><button id="zones-pattern">1 sur 2</button></div><label><input id="live-zone-apply" type="checkbox" ${liveZoneApply ? "checked" : ""} ${connectionState !== "connected" ? "disabled" : ""} /> Application directe</label><span>${zoneState.filter(Boolean).length} sélectionnées</span></div>${layoutMessage ? `<p class="layout-message">${layoutMessage}</p>` : ""}${zonesOpen ? `<div class="layout-calibration"><p>Limites mesurées des étagères — modifiables si le ruban est déplacé.</p><label>Fin étagère basse<input id="bottom-end" type="number" min="1" max="95" value="${furnitureLayout.bottomEnd}" /></label><label>Fin petite étagère<input id="middle-end" type="number" min="2" max="96" value="${furnitureLayout.middleEnd}" /></label><button id="save-layout">Mémoriser</button></div><div class="zone-grid">${zoneState.map((active, index) => `<button class="zone-cell ${active ? "active" : ""}" data-zone="${index}">${index + 1}</button>`).join("")}</div>` : ""}<button id="zones-apply" class="primary-wide" ${connectionState !== "connected" ? "disabled" : ""}>Allumer la sélection (${zoneState.filter(Boolean).length})</button></section>
       <section class="white-panel ${activeChannel === "white" || fusionEnabled ? "active-mode" : "inactive-mode"}"><div class="section-title"><div><p class="eyebrow">☀ CANAL BLANC</p><h2>Blanc et température</h2></div><label class="fusion-toggle"><input id="fusion-toggle" type="checkbox" ${fusionEnabled ? "checked" : ""} ${connectionState !== "connected" ? "disabled" : ""} /> Fusion</label></div><div class="temperature-labels"><span>Chaud</span><span>Froid</span></div><div class="white-controls"><label>Température<input id="white-temperature" class="cct-range" type="range" min="0" max="100" value="${whiteTemperature}" ${connectionState !== "connected" ? "disabled" : ""} /></label><label>Intensité<input id="white-level" type="range" min="0" max="255" value="${whiteBrightness}" ${connectionState !== "connected" ? "disabled" : ""} /></label></div></section>
       <section class="dashboard ${connectionState !== "connected" ? "muted" : ""}">
         <div class="section-title"><div><p class="eyebrow">ESPACE DE CONTRÔLE</p><h2>${deviceName}</h2></div><span class="locked">${connectionState === "connected" ? "ACTIF" : "EN ATTENTE"}</span></div>
@@ -193,10 +195,11 @@ function render() {
   document.querySelectorAll<HTMLButtonElement>("[data-group-scene-id]").forEach(button => button.addEventListener("click", () => applySceneToAll(button.dataset.groupSceneId || "")));
   document.querySelector<HTMLButtonElement>("#zones-toggle")?.addEventListener("click", () => { zonesOpen = !zonesOpen; render(); });
   document.querySelectorAll<HTMLButtonElement>("[data-shelf]").forEach(button => button.addEventListener("click", () => toggleShelf(button.dataset.shelf as ShelfId)));
-  document.querySelectorAll<HTMLButtonElement>("[data-zone]").forEach(button => button.addEventListener("click", () => { const index = Number(button.dataset.zone); zoneState[index] = !zoneState[index]; render(); }));
-  document.querySelector<HTMLButtonElement>("#zones-all")?.addEventListener("click", () => { zoneState = zoneState.map(() => true); render(); });
-  document.querySelector<HTMLButtonElement>("#zones-none")?.addEventListener("click", () => { zoneState = zoneState.map(() => false); render(); });
-  document.querySelector<HTMLButtonElement>("#zones-pattern")?.addEventListener("click", () => { zoneState = zoneState.map((_, index) => index % 2 === 0); render(); });
+  document.querySelectorAll<HTMLButtonElement>("[data-zone]").forEach(button => button.addEventListener("click", () => { const index = Number(button.dataset.zone); zoneState[index] = !zoneState[index]; zoneSelectionChanged(); }));
+  document.querySelector<HTMLButtonElement>("#zones-all")?.addEventListener("click", () => { zoneState = zoneState.map(() => true); zoneSelectionChanged(); });
+  document.querySelector<HTMLButtonElement>("#zones-none")?.addEventListener("click", () => { zoneState = zoneState.map(() => false); zoneSelectionChanged(); });
+  document.querySelector<HTMLButtonElement>("#zones-pattern")?.addEventListener("click", () => { zoneState = zoneState.map((_, index) => index % 2 === 0); zoneSelectionChanged(); });
+  document.querySelector<HTMLInputElement>("#live-zone-apply")?.addEventListener("change", event => { liveZoneApply = (event.target as HTMLInputElement).checked; localStorage.setItem("led2.liveZoneApply", String(liveZoneApply)); if (liveZoneApply) scheduleZoneApply(); render(); });
   document.querySelector<HTMLButtonElement>("#save-layout")?.addEventListener("click", saveFurnitureLayout);
   document.querySelector<HTMLButtonElement>("#zones-apply")?.addEventListener("click", applyZones);
   document.querySelector<HTMLButtonElement>("#preset-record")?.addEventListener("click", () => { presetRecordMode = !presetRecordMode; presetMessage = presetRecordMode ? "Choisissez une mémoire pour l’enregistrer." : ""; render(); });
@@ -228,7 +231,13 @@ function toggleShelf(id: ShelfId) {
   if (!shelf) return;
   const shouldSelect = !zoneState.slice(shelf.start, shelf.end).every(Boolean);
   zoneState = zoneState.map((active, index) => index >= shelf.start && index < shelf.end ? shouldSelect : active);
-  render();
+  zoneSelectionChanged();
+}
+function zoneSelectionChanged() { render(); if (liveZoneApply) scheduleZoneApply(); }
+function scheduleZoneApply() {
+  if (connectionState !== "connected") return;
+  if (zoneApplyTimer !== undefined) window.clearTimeout(zoneApplyTimer);
+  zoneApplyTimer = window.setTimeout(() => { zoneApplyTimer = undefined; void applyZones(); }, 300);
 }
 function saveFurnitureLayout() {
   const bottomEnd = Number(document.querySelector<HTMLInputElement>("#bottom-end")?.value);
@@ -253,7 +262,13 @@ async function applyZones() {
   }
   if (start !== -1) groups.push({ s: start, e: TOTAL_ZONES });
   try {
-    if (groups.length <= 15) {
+    if (groups.length === 0) {
+      isMatrixMode = true;
+      const reset: Array<Record<string, unknown>> = [{ id: 0, start: 0, stop: TOTAL_ZONES * 2, grp: 1, spc: 0, of: 0, on: true, fx: 0, col: [[0, 0, 0]] }];
+      for (let id = 1; id < 30; id++) reset.push({ id, stop: 0 });
+      await sendWledState({ seg: reset });
+      activeSegmentCount = 1;
+    } else if (groups.length <= 15) {
       isMatrixMode = false;
       const segments: Array<Record<string, unknown>> = [];
       let id = 0;
@@ -283,8 +298,8 @@ async function applyZones() {
       }
       activeSegmentCount = 1;
     }
-    groupMessage = `${zoneState.filter(Boolean).length} zone(s) appliquée(s) en mode ${isMatrixMode ? "Matrix HD" : "Segments"}.`;
-  } catch { connectionState = "error"; groupMessage = "Échec de l’application des zones. Vérifiez la connexion WLED."; }
+    layoutMessage = `${zoneState.filter(Boolean).length} zone(s) appliquée(s) en mode ${isMatrixMode ? "Matrix HD" : "Segments"}.`;
+  } catch { connectionState = "error"; layoutMessage = "Échec de l’application des zones. Vérifiez la connexion WLED."; }
   render();
 }
 async function useWledPreset(id: number) { if (connectionState !== "connected") return; presetMessage = presetRecordMode ? `Enregistrement de la mémoire ${id}…` : `Chargement de la mémoire ${id}…`; render(); try { const payload = presetRecordMode ? { psave: id } : { ps: id }; const response = await fetchLocal(`${baseUrl}/json/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error(); presetRecordMode = false; presetMessage = `Mémoire ${id} ${payload.psave ? "enregistrée" : "chargée"}.`; } catch { presetMessage = `Impossible de modifier la mémoire ${id}.`; } render(); }

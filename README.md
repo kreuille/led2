@@ -19,6 +19,8 @@ La version PWA reprend maintenant le moteur WLED V34 Matrix fourni : 97 zones/19
 
 La vue « Plan du meuble » utilise une vue frontale plane du meuble. Les 97 zones sont représentées directement sur les bandeaux à leurs proportions réelles : 42 sur l’étagère basse, 13 sur la petite et 42 sur la haute. Chaque point peut être sélectionné sur l’image ; les raccourcis par étagère et la grille numérotée restent disponibles.
 
+Le mode « Application directe » envoie automatiquement la sélection à WLED après chaque toucher, avec une courte temporisation pour regrouper les gestes successifs. Il peut être désactivé pour préparer une sélection avant de l’appliquer manuellement.
+
 Pour un fonctionnement iPhone uniquement sur le Wi-Fi, sans Home Assistant ni cloud, LED2 peut être hébergée directement par WLED. Voir [`docs/WLED_WIFI.md`](docs/WLED_WIFI.md).
 
 Par sécurité, aucun token Home Assistant n'est intégré au JavaScript public. Toute future connexion Home Assistant devra passer par une configuration locale ou un proxy authentifié.
