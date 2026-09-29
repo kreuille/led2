@@ -31,6 +31,8 @@ La V11 ajoute un diagnostic live du contrôleur : version WLED, IP, ESP32, nombr
 
 La V12 réorganise l’interface mobile dans l’ordre d’utilisation et ajoute une navigation rapide toujours accessible. Le plan du meuble dispose d’un zoom de 100 à 300 %, mémorisé entre les sessions, ainsi que d’un mode plein écran avec défilement horizontal : les 97 points deviennent beaucoup plus simples à sélectionner précisément sur téléphone.
 
+La V13 ajoute cinq raccourcis qui respectent la géométrie réelle du meuble : moitié gauche ou droite des grandes étagères et petite étagère complète. Toute sélection de LED peut aussi être enregistrée sous un nom, rappelée en un toucher et supprimée. Ces favoris sont conservés localement et inclus avec le niveau de zoom dans les sauvegardes LED2.
+
 Pour un fonctionnement iPhone uniquement sur le Wi-Fi, sans Home Assistant ni cloud, LED2 peut être hébergée directement par WLED. Voir [`docs/WLED_WIFI.md`](docs/WLED_WIFI.md).
 
 Par sécurité, aucun token Home Assistant n'est intégré au JavaScript public. Toute future connexion Home Assistant devra passer par une configuration locale ou un proxy authentifié.
@@ -70,4 +72,4 @@ Lire les documents dans cet ordre :
 
 ## Statut
 
-Version 12 — navigation mobile rapide, plan plein écran et zoom persistant, diagnostic live, 97 zones, synchronisation et reprise réseau, commandes regroupées, ambiances par étagère, presets et sauvegarde sécurisée.
+Version 13 — raccourcis physiques et favoris de zones nommés, navigation mobile rapide, plan plein écran et zoom persistant, diagnostic live, 97 zones, synchronisation et reprise réseau, commandes regroupées, ambiances par étagère, presets et sauvegarde sécurisée.

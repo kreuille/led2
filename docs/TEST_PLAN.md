@@ -1,5 +1,14 @@
 # Plan de tests
 
+## Validation V13
+
+- Cinq raccourcis physiques vérifiés : bas gauche/droite, petite étagère et haut gauche/droite
+- Correspondance contrôlée avec le câblage : bas droite LED 1–21 et haut gauche LED 77–97
+- Création, rappel et suppression d’un favori de 21 LED sur une largeur de 390 px
+- Normalisation des index restaurés : conversion numérique, dédoublonnage, tri et rejet des valeurs hors limites
+- Favoris de zones et niveau de zoom inclus dans la sauvegarde complète et restaurés dans le stockage local
+- Aucun débordement horizontal et aucune erreur navigateur sur mobile
+
 ## Validation V12
 
 - Ordre visuel de onze sections contrôlé sur une largeur de 390 px

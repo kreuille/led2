@@ -3,7 +3,7 @@ import "./scan.css";
 import "./v34.css";
 import iro from "@jaames/iro";
 import furniturePhoto from "./assets/meuble-led-flat.webp?inline";
-import { clampByte, clampMapZoom, escapeHtml, formatUptime, isLed2Backup, normalizeWledUrl, reconstructZones, wifiQuality } from "./lib/safety";
+import { clampByte, clampMapZoom, escapeHtml, formatUptime, isLed2Backup, normalizeWledUrl, normalizeZoneIndexes, reconstructZones, wifiQuality } from "./lib/safety";
 
 const embeddedWledMode = /^\/led2\.html?$/i.test(window.location.pathname);
 if ("serviceWorker" in navigator && !embeddedWledMode) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
@@ -31,6 +31,7 @@ interface SavedDevice { url: string; name: string; }
 interface DiscoveredDevice extends SavedDevice { version?: string; }
 interface Scene { id: string; name: string; state: WledState; }
 interface FurnitureLayout { bottomEnd: number; middleEnd: number; }
+interface ZoneFavorite { id: string; name: string; zones: number[]; }
 type ShelfId = "bottom" | "middle" | "top";
 type ShelfMode = "off" | "rgb" | "white";
 interface ShelfAmbience { mode: ShelfMode; color: string; temperature: number; brightness: number; effect: number; }
@@ -38,7 +39,7 @@ type ShelfAmbiences = Record<ShelfId, ShelfAmbience>;
 interface Led2Backup {
   format: "led2-backup"; version: 1; createdAt: string;
   wled: { cfg?: unknown; state?: unknown; presets?: unknown };
-  app: { devices: SavedDevice[]; scenes: Scene[]; furnitureLayout: FurnitureLayout; shelfAmbiences: ShelfAmbiences; liveZoneApply: boolean };
+  app: { devices: SavedDevice[]; scenes: Scene[]; furnitureLayout: FurnitureLayout; shelfAmbiences: ShelfAmbiences; liveZoneApply: boolean; zoneFavorites?: ZoneFavorite[]; mapZoom?: number };
 }
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -102,6 +103,7 @@ let mapZoom = clampMapZoom(localStorage.getItem("led2.mapZoom") || 1);
 let mapFocusMode = false;
 let mapScrollLeft = 0;
 let sectionObserver: IntersectionObserver | null = null;
+let zoneFavorites = loadZoneFavorites();
 
 window.addEventListener("beforeinstallprompt", event => { event.preventDefault(); deferredInstallPrompt = event as InstallPrompt; render(); });
 window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; installMessage = "LED2 est installée."; render(); });
@@ -113,6 +115,21 @@ function sanitizeScenes(value: unknown): Scene[] {
     .slice(0, 20)
     .map(scene => ({ id: scene.id.slice(0, 100), name: scene.name.slice(0, 80), state: scene.state as WledState }));
 }
+function sanitizeZoneFavorites(value: unknown): ZoneFavorite[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item.name !== "string") return [];
+    const zones = normalizeZoneIndexes(item.zones, TOTAL_ZONES);
+    if (!zones.length) return [];
+    const id = typeof item.id === "string" && item.id ? item.id.slice(0, 100) : crypto.randomUUID();
+    return [{ id, name: item.name.trim().slice(0, 40) || "Sélection", zones }];
+  }).slice(0, 20);
+}
+function loadZoneFavorites(): ZoneFavorite[] {
+  try { return sanitizeZoneFavorites(JSON.parse(localStorage.getItem("led2.zoneFavorites") || "[]")); }
+  catch { return []; }
+}
+function saveZoneFavorites() { localStorage.setItem("led2.zoneFavorites", JSON.stringify(zoneFavorites)); }
 function loadFurnitureLayout(): FurnitureLayout {
   try {
     const value = JSON.parse(localStorage.getItem("led2.furnitureLayout") || "null") as Partial<FurnitureLayout> | null;
@@ -302,6 +319,10 @@ function renderFurnitureSelector() {
       const selected = zoneState.slice(shelf.start, shelf.end).filter(Boolean).length;
       return `<button class="shelf-button ${shelfSelectionClass(shelf.start, shelf.end)}" data-shelf="${shelf.id}"><span><strong>${shelf.name}</strong><small>${shelf.direction} · zones ${shelf.start + 1}–${shelf.end}</small></span><b>${selected}/${shelf.end - shelf.start}</b></button>`;
     }).join("")}</div>
+    <div class="zone-shortcuts"><div class="zone-shortcut-heading"><div><strong>Raccourcis physiques</strong><small>Sélections proportionnelles au meuble</small></div><button id="save-zone-favorite" ${zoneState.some(Boolean) ? "" : "disabled"}>+ Favori</button></div>
+      <div class="zone-template-list"><button data-zone-template="bottom-left">Bas gauche</button><button data-zone-template="bottom-right">Bas droite</button><button data-zone-template="middle">Petite</button><button data-zone-template="top-left">Haut gauche</button><button data-zone-template="top-right">Haut droite</button></div>
+      ${zoneFavorites.length ? `<div class="zone-favorite-list">${zoneFavorites.map(favorite => `<div><button data-zone-favorite="${escapeHtml(favorite.id)}"><strong>${escapeHtml(favorite.name)}</strong><small>${favorite.zones.length} LED</small></button><button data-delete-zone-favorite="${escapeHtml(favorite.id)}" aria-label="Supprimer ${escapeHtml(favorite.name)}">×</button></div>`).join("")}</div>` : `<p class="zone-favorite-empty">Enregistrez votre sélection actuelle pour la retrouver en un toucher.</p>`}
+    </div>
   </div>`;
 }
 
@@ -434,6 +455,10 @@ function render() {
   document.querySelector<HTMLButtonElement>("#map-zoom-in")?.addEventListener("click", () => updateMapZoom(mapZoom + .5));
   document.querySelector<HTMLButtonElement>("#map-focus-toggle")?.addEventListener("click", () => { mapFocusMode = !mapFocusMode; render(); });
   document.querySelectorAll<HTMLButtonElement>("[data-shelf]").forEach(button => button.addEventListener("click", () => toggleShelf(button.dataset.shelf as ShelfId)));
+  document.querySelectorAll<HTMLButtonElement>("[data-zone-template]").forEach(button => button.addEventListener("click", () => applyZoneTemplate(button.dataset.zoneTemplate || "")));
+  document.querySelectorAll<HTMLButtonElement>("[data-zone-favorite]").forEach(button => button.addEventListener("click", () => applyZoneFavorite(button.dataset.zoneFavorite || "")));
+  document.querySelectorAll<HTMLButtonElement>("[data-delete-zone-favorite]").forEach(button => button.addEventListener("click", () => deleteZoneFavorite(button.dataset.deleteZoneFavorite || "")));
+  document.querySelector<HTMLButtonElement>("#save-zone-favorite")?.addEventListener("click", saveCurrentZoneFavorite);
   document.querySelectorAll<HTMLButtonElement>(".zone-cell").forEach(button => button.addEventListener("click", () => selectZone(Number(button.dataset.zone))));
   bindFurnitureGestures();
   document.querySelector<HTMLButtonElement>("#zones-all")?.addEventListener("click", () => replaceZoneSelection(zoneState.map(() => true)));
@@ -587,6 +612,39 @@ function toggleShelf(id: ShelfId) {
   const shouldSelect = !zoneState.slice(shelf.start, shelf.end).every(Boolean);
   replaceZoneSelection(zoneState.map((active, index) => index >= shelf.start && index < shelf.end ? shouldSelect : active));
 }
+function applyZoneTemplate(template: string) {
+  const ranges: Record<string, [number, number, string]> = {
+    "bottom-left": [21, 42, "Bas gauche"], "bottom-right": [0, 21, "Bas droite"], middle: [42, 55, "Petite étagère"],
+    "top-left": [76, 97, "Haut gauche"], "top-right": [55, 76, "Haut droite"],
+  };
+  const range = ranges[template];
+  if (!range) return;
+  layoutMessage = `${range[2]} sélectionné · LED ${range[0] + 1}–${range[1]}.`;
+  replaceZoneSelection(Array.from({ length: TOTAL_ZONES }, (_, index) => index >= range[0] && index < range[1]));
+}
+function saveCurrentZoneFavorite() {
+  const zones = zoneState.flatMap((active, index) => active ? [index] : []);
+  if (!zones.length) return;
+  const name = window.prompt("Nom de cette sélection", `Favori ${zoneFavorites.length + 1}`)?.trim();
+  if (!name) return;
+  zoneFavorites = [{ id: crypto.randomUUID(), name: name.slice(0, 40), zones }, ...zoneFavorites].slice(0, 20);
+  saveZoneFavorites();
+  layoutMessage = `Favori enregistré avec ${zones.length} LED.`;
+  render();
+}
+function applyZoneFavorite(id: string) {
+  const favorite = zoneFavorites.find(item => item.id === id);
+  if (!favorite) return;
+  const selected = new Set(favorite.zones);
+  layoutMessage = `Favori chargé · ${favorite.zones.length} LED.`;
+  replaceZoneSelection(Array.from({ length: TOTAL_ZONES }, (_, index) => selected.has(index)));
+}
+function deleteZoneFavorite(id: string) {
+  zoneFavorites = zoneFavorites.filter(item => item.id !== id);
+  saveZoneFavorites();
+  layoutMessage = "Favori supprimé.";
+  render();
+}
 function zoneSelectionChanged() { render(); if (liveZoneApply) scheduleZoneApply(); }
 function scheduleZoneApply() {
   if (connectionState !== "connected") return;
@@ -738,7 +796,7 @@ async function fetchJsonOptional(path: string) {
 async function exportBackup() {
   backupMessage = "Lecture de la configuration WLED…"; render();
   const [cfg, currentState, presets] = await Promise.all([fetchJsonOptional("/json/cfg"), fetchJsonOptional("/json/state"), fetchJsonOptional("/presets.json")]);
-  const backup: Led2Backup = { format: "led2-backup", version: 1, createdAt: new Date().toISOString(), wled: { cfg, state: currentState, presets }, app: { devices: savedDevices, scenes, furnitureLayout, shelfAmbiences, liveZoneApply } };
+  const backup: Led2Backup = { format: "led2-backup", version: 1, createdAt: new Date().toISOString(), wled: { cfg, state: currentState, presets }, app: { devices: savedDevices, scenes, furnitureLayout, shelfAmbiences, liveZoneApply, zoneFavorites, mapZoom } };
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
   link.download = `led2-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
@@ -773,9 +831,12 @@ async function restoreBackup() {
     if (restoredLayout && Number.isInteger(restoredLayout.bottomEnd) && Number.isInteger(restoredLayout.middleEnd) && restoredLayout.bottomEnd > 0 && restoredLayout.bottomEnd < restoredLayout.middleEnd && restoredLayout.middleEnd < TOTAL_ZONES) furnitureLayout = restoredLayout;
     shelfAmbiences = sanitizeShelfAmbiences(backup.app.shelfAmbiences);
     liveZoneApply = backup.app.liveZoneApply !== false;
+    zoneFavorites = sanitizeZoneFavorites(backup.app.zoneFavorites);
+    mapZoom = clampMapZoom(backup.app.mapZoom ?? mapZoom);
     localStorage.setItem("led2.devices", JSON.stringify(savedDevices)); saveScenes();
-    localStorage.setItem("led2.furnitureLayout", JSON.stringify(furnitureLayout)); saveShelfAmbiences();
+    localStorage.setItem("led2.furnitureLayout", JSON.stringify(furnitureLayout)); saveShelfAmbiences(); saveZoneFavorites();
     localStorage.setItem("led2.liveZoneApply", String(liveZoneApply));
+    localStorage.setItem("led2.mapZoom", String(mapZoom));
     if (connectionState === "connected" && backup.wled.cfg) {
       const cfgResponse = await fetchLocal(`${baseUrl}/json/cfg`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(backup.wled.cfg), signal: AbortSignal.timeout(10000) });
       if (!cfgResponse.ok) throw new Error("cfg");

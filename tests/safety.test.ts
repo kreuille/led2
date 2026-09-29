@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clampByte, clampMapZoom, escapeHtml, formatUptime, isLed2Backup, normalizeWledUrl, reconstructZones, wifiQuality } from "../src/lib/safety.ts";
+import { clampByte, clampMapZoom, escapeHtml, formatUptime, isLed2Backup, normalizeWledUrl, normalizeZoneIndexes, reconstructZones, wifiQuality } from "../src/lib/safety.ts";
 
 test("escapeHtml neutralise le HTML provenant de WLED", () => {
   assert.equal(escapeHtml('<img src=x onerror="alert(1)">'), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
@@ -42,4 +42,5 @@ test("les indicateurs de diagnostic restent lisibles aux valeurs limites", () =>
   assert.equal(clampMapZoom(0), 1);
   assert.equal(clampMapZoom(1.7), 1.5);
   assert.equal(clampMapZoom(4), 3);
+  assert.deepEqual(normalizeZoneIndexes([5, 2, 5, -1, 97, "3", 2.4], 97), [2, 3, 5]);
 });

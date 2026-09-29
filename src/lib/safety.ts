@@ -76,3 +76,8 @@ export function clampMapZoom(value: unknown) {
   if (!Number.isFinite(parsed)) return 1;
   return Math.max(1, Math.min(3, Math.round(parsed * 2) / 2));
 }
+
+export function normalizeZoneIndexes(value: unknown, totalZones: number) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < totalZones))].sort((a, b) => a - b);
+}

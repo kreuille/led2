@@ -103,4 +103,19 @@
 .diagnostic-grid strong { margin-top: 6px; color: #e7eef7; font-size: 13px; }
 .diagnostic-grid small { margin-top: 4px; color: #7f91a5; font: 8px 'DM Mono',monospace; }
 @media (max-width: 720px) { .diagnostic-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+.zone-shortcuts { margin-top: 12px; padding: 12px; border: 1px solid #263a4f; border-radius: 11px; background: rgba(8,17,31,.62); }
+.zone-shortcut-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.zone-shortcut-heading strong, .zone-shortcut-heading small { display: block; } .zone-shortcut-heading strong { color: #e8eef6; font-size: 11px; } .zone-shortcut-heading small { margin-top: 3px; color: #718398; font: 8px 'DM Mono',monospace; }
+.zone-shortcut-heading button { padding: 7px 10px; color: #dbeafe; background: rgba(37,99,235,.3); border: 1px solid #3b82f6; border-radius: 7px; font-size: 10px; font-weight: 700; }
+.zone-shortcut-heading button:disabled { opacity: .35; }
+.zone-template-list { display: grid; grid-template-columns: repeat(5,1fr); gap: 6px; margin-top: 10px; }
+.zone-template-list button { padding: 8px 5px; color: #a9bad0; background: #172a3d; border: 1px solid #304860; border-radius: 7px; font: 8px 'DM Mono',monospace; }
+.zone-template-list button:hover { color: white; border-color: #60a5fa; }
+.zone-favorite-list { display: grid; gap: 6px; margin-top: 10px; }
+.zone-favorite-list > div { display: flex; gap: 5px; }
+.zone-favorite-list button:first-child { display: flex; align-items: center; justify-content: space-between; flex: 1; min-width: 0; padding: 8px 10px; color: #dbeafe; text-align: left; background: rgba(30,64,175,.18); border: 1px solid #304b68; border-radius: 7px; }
+.zone-favorite-list strong, .zone-favorite-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .zone-favorite-list small { color: #7f91a5; font: 8px 'DM Mono',monospace; }
+.zone-favorite-list button:last-child { width: 32px; color: #ef9a8a; background: rgba(127,29,29,.18); border: 1px solid rgba(239,68,68,.3); border-radius: 7px; }
+.zone-favorite-empty { margin: 10px 0 0; color: #718398; font: 8px/1.5 'DM Mono',monospace; }
+@media (max-width: 440px) { .zone-template-list { grid-template-columns: repeat(3,1fr); } }
 @media (max-width: 720px) { .ambience-grid { grid-template-columns: 1fr; } .quick-scenes { grid-template-columns: repeat(2,1fr); } .quick-scenes button:last-child { grid-column: 1 / -1; } .backup-actions { flex-direction: column; } }
