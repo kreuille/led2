@@ -2,7 +2,7 @@
   "name": "LED2 — WLED Control",
   "short_name": "LED2",
   "id": "/led2/",
-  "description": "Interface moderne de contrôle pour appareils WLED.",
+  "description": "Studio visuel local pour contrôler, animer et programmer un meuble WLED.",
   "lang": "fr",
   "start_url": "/led2/?source=pwa",
   "scope": "/led2/",
@@ -16,5 +16,10 @@
     { "src": "/led2/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "categories": ["utilities", "smart-home"],
+  "shortcuts": [
+    { "name": "Plan du meuble", "short_name": "Plan", "url": "/led2/?source=shortcut&section=zones" },
+    { "name": "Composer une scène", "short_name": "Composer", "url": "/led2/?source=shortcut&section=composer" },
+    { "name": "Programmer WLED", "short_name": "Horaires", "url": "/led2/?source=shortcut&section=schedules" }
+  ],
   "prefer_related_applications": false
 }

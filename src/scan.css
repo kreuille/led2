@@ -119,3 +119,41 @@
 .zone-favorite-empty { margin: 10px 0 0; color: #718398; font: 8px/1.5 'DM Mono',monospace; }
 @media (max-width: 440px) { .zone-template-list { grid-template-columns: repeat(3,1fr); } }
 @media (max-width: 720px) { .ambience-grid { grid-template-columns: 1fr; } .quick-scenes { grid-template-columns: repeat(2,1fr); } .quick-scenes button:last-child { grid-column: 1 / -1; } .backup-actions { flex-direction: column; } }
+.offline-banner { margin: 4px 0 8px; padding: 9px 12px; color: #fde68a; border: 1px solid #92400e; border-radius: 9px; background: rgba(120,53,15,.35); font: 9px 'DM Mono',monospace; }
+.setup-wizard { order: 2; margin-top: 8px; padding: 18px; border: 1px solid rgba(96,165,250,.42); border-radius: 15px; background: linear-gradient(145deg,rgba(30,64,175,.24),rgba(88,28,135,.14)); }
+.setup-wizard h2 { margin: 5px 0 8px; } .setup-wizard > p:not(.eyebrow) { max-width: 700px; margin-bottom: 14px; color: #a8b7c9; line-height: 1.55; font-size: 12px; }
+.setup-wizard > div:last-child { display: flex; justify-content: flex-end; gap: 8px; } .setup-wizard .text-button { margin-right: auto; padding: 8px; color: #718398; background: transparent; }
+.setup-progress { display: flex; gap: 5px; margin-bottom: 14px; } .setup-progress span { width: 26px; height: 3px; border-radius: 9px; background: #334155; } .setup-progress span.active { background: #60a5fa; box-shadow: 0 0 8px #2563eb; }
+.composer-panel, .sequence-panel, .schedules-panel { margin-top: 24px; padding: 22px; border: 1px solid #294157; border-radius: 18px; background: linear-gradient(145deg,rgba(13,26,41,.92),rgba(9,20,33,.78)); }
+.composer-panel h2, .sequence-panel h2, .schedules-panel h2 { margin-bottom: 0; }
+.composer-controls { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 9px; margin-top: 16px; }
+.composer-controls label, .composer-save label, .sequence-save label { color: #8596aa; font: 9px 'DM Mono',monospace; letter-spacing: .04em; }
+.composer-controls label span { float: right; color: #d9e4f0; }
+.composer-controls select, .composer-controls input, .composer-save select, .sequence-builder select, .sequence-builder input, .sequence-save input, .sequence-steps input, .schedule-builder input { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 9px; color: #eef2f7; background: #091523; border: 1px solid #2a3d51; border-radius: 7px; }
+.composer-controls input[type=color] { height: 38px; padding: 3px; } .composer-controls input[type=range] { padding: 0; accent-color: #fb923c; }
+.composer-controls .is-hidden { display: none; }
+.layer-list, .visual-scene-list, .saved-sequences, .schedule-list { display: grid; gap: 7px; margin-top: 12px; }
+.layer-list article, .visual-scene-list article, .saved-sequences article, .schedule-list article { display: flex; align-items: center; gap: 9px; padding: 9px; border: 1px solid #2a3d51; border-radius: 10px; background: #0c1b2a; }
+.layer-list article > div, .schedule-list article > div { flex: 1; min-width: 0; } .layer-list strong, .layer-list small, .visual-scene-list strong, .visual-scene-list small, .saved-sequences strong, .saved-sequences small, .schedule-list strong, .schedule-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-list small, .visual-scene-list small, .saved-sequences small, .schedule-list small { margin-top: 3px; color: #718398; font: 8px 'DM Mono',monospace; }
+.layer-list article > button:last-child, .visual-scene-list article > button:last-child, .saved-sequences article > button:last-child, .schedule-list article > button:last-child, .sequence-steps button { width: 30px; color: #ef9a8a; background: transparent; font-size: 17px; }
+.layer-swatch { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--layer-color); box-shadow: 0 0 12px var(--layer-color); }
+.composer-save, .sequence-save { display: flex; align-items: flex-end; justify-content: flex-end; gap: 8px; margin-top: 12px; } .composer-save label { margin-right: auto; }
+.empty-state { margin: 14px 0 0; color: #718398; font: 9px/1.5 'DM Mono',monospace; }
+.visual-scene-list { grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); }
+.visual-scene-list article > button:first-child, .saved-sequences article > button:first-child { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; color: #e7edf5; text-align: left; background: transparent; }
+.visual-scene-list article > button:nth-last-child(2) { padding: 6px 7px; color: #93c5fd; border: 1px solid #315272; border-radius: 6px; background: rgba(30,64,175,.2); font: 8px 'DM Mono',monospace; }
+.visual-stack { display: flex; width: 35px; } .visual-stack i { width: 18px; height: 24px; margin-right: -8px; border: 2px solid #0c1b2a; border-radius: 8px; }
+.sequence-builder { display: grid; grid-template-columns: 1fr 100px auto; gap: 8px; align-items: end; margin-top: 15px; }
+.sequence-builder select, .sequence-builder input { margin-top: 0; } .sequence-steps { display: grid; gap: 5px; margin-top: 10px; }
+.sequence-steps > div { display: grid; grid-template-columns: 28px 1fr 90px 30px; align-items: center; gap: 8px; padding: 7px 9px; border-left: 2px solid #60a5fa; background: rgba(30,64,175,.12); }
+.sequence-steps b { color: #93c5fd; } .sequence-steps label { display: flex; align-items: center; gap: 4px; } .sequence-steps input { margin: 0; padding: 6px; }
+.sequence-save label { display: grid; grid-template-columns: 90px auto; align-items: center; column-gap: 6px; margin-right: auto; } .sequence-save label input { grid-row: 1 / 3; grid-column: 2; margin: 0; } .sequence-save small { color: #526477; }
+.saved-sequences { grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); } .saved-sequences article.playing { border-color: #34d399; box-shadow: inset 0 0 20px rgba(16,185,129,.1); }
+.danger-button { padding: 8px 11px; color: #fecaca; border: 1px solid #7f1d1d; border-radius: 7px; background: rgba(127,29,29,.3); }
+.schedule-builder { display: grid; grid-template-columns: 1.2fr 110px 100px 1.4fr auto; align-items: center; gap: 8px; margin-top: 16px; }
+.schedule-builder input { margin-top: 0; } .weekday-picker { display: grid; grid-template-columns: repeat(7,1fr); gap: 3px; }
+.weekday-picker label { position: relative; cursor: pointer; } .weekday-picker input { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; opacity: 0; } .weekday-picker span { display: grid; place-items: center; height: 31px; color: #718398; border: 1px solid #2a3d51; border-radius: 6px; background: #091523; font: 9px 'DM Mono',monospace; }
+.weekday-picker input:checked + span { color: #dbeafe; border-color: #3b82f6; background: rgba(37,99,235,.32); }
+.schedule-toggle { position: relative; flex: 0 0 auto; width: 34px; height: 20px; } .schedule-toggle input { position: absolute; opacity: 0; } .schedule-toggle span { position: absolute; inset: 0; border-radius: 99px; background: #334155; } .schedule-toggle span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: #94a3b8; transition: .2s; } .schedule-toggle input:checked + span { background: #2563eb; } .schedule-toggle input:checked + span::after { transform: translateX(14px); background: white; }
+@media (max-width: 720px) { .composer-controls { grid-template-columns: repeat(2,minmax(0,1fr)); } .composer-controls label:first-child { grid-column: 1 / -1; } .composer-save, .sequence-save { flex-wrap: wrap; } .sequence-builder { grid-template-columns: 1fr 85px; } .sequence-builder button { grid-column: 1 / -1; min-height: 38px; } .schedule-builder { grid-template-columns: 1fr 1fr; } .schedule-builder > input:first-child, .schedule-builder .weekday-picker, .schedule-builder button { grid-column: 1 / -1; } }

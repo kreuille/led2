@@ -79,20 +79,25 @@ body { background: radial-gradient(circle at 50% -20%, #1e293b 0, #0f172a 48%); 
 .quick-navigation::-webkit-scrollbar { display: none; }
 .quick-navigation button { flex: 0 0 auto; padding: 7px 10px; color: #8494a7; background: rgba(30,41,59,.72); border: 1px solid #293b50; border-radius: 999px; font: 9px 'DM Mono',monospace; }
 .quick-navigation button.active { color: #dbeafe; background: rgba(37,99,235,.4); border-color: #60a5fa; }
-.install-banner { order: 2; }
-.connect-card { order: 3; }
-.master-brightness { order: 4; }
-.wled-presets { order: 5; }
-.zones-panel { order: 6; scroll-margin-top: 112px; }
-.ambience-panel { order: 7; scroll-margin-top: 112px; }
-.white-panel { order: 8; scroll-margin-top: 112px; }
-.dashboard { order: 9; scroll-margin-top: 112px; }
-.scenes-panel { order: 10; scroll-margin-top: 112px; }
-.diagnostics-panel { order: 11; scroll-margin-top: 112px; }
-.device-tools { order: 12; }
-.saved-devices { order: 13; }
-.backup-panel { order: 14; }
-.master-power { order: 15; }
+.offline-banner { order: 2; }
+.setup-wizard { order: 3; }
+.install-banner { order: 4; }
+.connect-card { order: 5; }
+.master-brightness { order: 6; }
+.wled-presets { order: 7; }
+.zones-panel { order: 8; scroll-margin-top: 112px; }
+.ambience-panel { order: 9; scroll-margin-top: 112px; }
+.composer-panel { order: 10; scroll-margin-top: 112px; }
+.sequence-panel { order: 11; scroll-margin-top: 112px; }
+.schedules-panel { order: 12; scroll-margin-top: 112px; }
+.white-panel { order: 13; scroll-margin-top: 112px; }
+.dashboard { order: 14; scroll-margin-top: 112px; }
+.scenes-panel { order: 15; scroll-margin-top: 112px; }
+.diagnostics-panel { order: 16; scroll-margin-top: 112px; }
+.device-tools { order: 17; }
+.saved-devices { order: 18; }
+.backup-panel { order: 19; }
+.master-power { order: 20; }
 .furniture-map-scroll { width: 100%; overflow: auto; border-radius: 15px; overscroll-behavior: contain; scrollbar-color: #3b82f6 #172033; }
 .furniture-map { min-width: 100%; }
 .map-view-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 0 8px; }

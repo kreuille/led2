@@ -33,6 +33,14 @@ La V12 réorganise l’interface mobile dans l’ordre d’utilisation et ajoute
 
 La V13 ajoute cinq raccourcis qui respectent la géométrie réelle du meuble : moitié gauche ou droite des grandes étagères et petite étagère complète. Toute sélection de LED peut aussi être enregistrée sous un nom, rappelée en un toucher et supprimée. Ces favoris sont conservés localement et inclus avec le niveau de zoom dans les sauvegardes LED2.
 
+La V14 introduit un compositeur spatial. Une scène peut contenir jusqu’à douze couches choisies sur la photo, chacune en RGB, blanc réglable ou éteinte, avec intensité et effet. LED2 regroupe automatiquement les LED voisines et vérifie la limite de segments du contrôleur avant l’envoi.
+
+La V15 ajoute les transitions et animations : plusieurs scènes visuelles peuvent être ordonnées, temporisées et répétées. L’animation est pilotée par LED2 tandis que chaque fondu est exécuté nativement par WLED.
+
+La V16 programme jusqu’à huit horaires directement dans WLED. Chaque horaire appelle un preset matériel, fonctionne ensuite sans téléphone ni cloud et active la synchronisation NTP avec le fuseau d’Europe centrale. Une scène visuelle peut être enregistrée dans n’importe quel emplacement de preset 1–250.
+
+La V17 finalise l’expérience iPhone/PWA : assistant de première configuration en quatre étapes, consignes adaptées à Safari et au mode autonome, état hors ligne visible, raccourcis d’application et prise en charge des zones sûres de l’écran.
+
 Pour un fonctionnement iPhone uniquement sur le Wi-Fi, sans Home Assistant ni cloud, LED2 peut être hébergée directement par WLED. Voir [`docs/WLED_WIFI.md`](docs/WLED_WIFI.md).
 
 Par sécurité, aucun token Home Assistant n'est intégré au JavaScript public. Toute future connexion Home Assistant devra passer par une configuration locale ou un proxy authentifié.
@@ -72,4 +80,4 @@ Lire les documents dans cet ordre :
 
 ## Statut
 
-Version 13 — raccourcis physiques et favoris de zones nommés, navigation mobile rapide, plan plein écran et zoom persistant, diagnostic live, 97 zones, synchronisation et reprise réseau, commandes regroupées, ambiances par étagère, presets et sauvegarde sécurisée.
+Version 17 — studio de scènes spatiales, animations avec transitions, programmations WLED autonomes, assistant iPhone/PWA, raccourcis physiques et favoris de zones, plan plein écran, diagnostic live et sauvegarde complète.

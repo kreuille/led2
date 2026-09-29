@@ -46,3 +46,18 @@
 - Sauvegarde/restauration complète avec confirmation
 - Normalisation et échappement des données externes
 - Tests unitaires du modèle et audit des dépendances
+
+## Phase 6 — studio visuel réalisé (V14–V15)
+
+- Scènes multi-zones composées directement depuis le plan du meuble
+- Couches RGB, blanc, extinction, intensité et effet
+- Contrôle automatique de la limite de segments WLED
+- Transitions natives et animations ordonnées avec durée/répétition
+
+## Phase 7 — autonomie réalisée (V16–V17)
+
+- Enregistrement des scènes visuelles comme presets matériels WLED
+- Jusqu’à huit programmations horaires exécutées par le contrôleur
+- Synchronisation NTP Europe centrale sans cloud ni Home Assistant
+- Assistant de première configuration et finition iPhone/PWA
+- Sauvegarde/restauration de toutes les scènes, animations et programmations

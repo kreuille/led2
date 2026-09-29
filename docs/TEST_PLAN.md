@@ -1,5 +1,34 @@
 # Plan de tests
 
+## Validation V17
+
+- Assistant en quatre étapes, persistance de fin et relance manuelle
+- Messages différents pour Safari iPhone, mode autonome et navigateur standard
+- Affichage hors ligne sans bloquer l’accès aux scènes enregistrées
+- Manifeste PWA enrichi, cache `led2-v17`, zones sûres iPhone et zéro débordement à 390 px
+
+## Validation V16
+
+- Création et validation d’horaires 24 h, jours, preset 1–250 et activation
+- Conversion des jours en masque WLED et limite à huit minuteries
+- Synchronisation prévue avec NTP, fuseau Europe centrale et heure Unix actuelle
+- Aucune programmation de test laissée sur le contrôleur réel
+
+## Validation V15
+
+- Création d’une animation à partir de scènes existantes
+- Durée 1–3600 secondes, répétition finie ou boucle et arrêt manuel
+- Nettoyage automatique des étapes lorsqu’une scène est supprimée
+- Transitions converties en dixièmes de seconde pour l’API WLED
+
+## Validation V14
+
+- Normalisation des couches, couleurs, températures, intensités, effets et zones
+- Priorité à la dernière couche en cas de chevauchement
+- Génération entrelacée des segments RGB pairs et blancs impairs
+- Refus explicite d’une composition dépassant la capacité de segments WLED
+- Persistance et sauvegarde/restauration des scènes visuelles
+
 ## Validation V13
 
 - Cinq raccourcis physiques vérifiés : bas gauche/droite, petite étagère et haut gauche/droite
