@@ -53,3 +53,20 @@ export function isLed2Backup(value: unknown): value is { format: "led2-backup"; 
   const backup = value as Record<string, unknown>;
   return backup.format === "led2-backup" && backup.version === 1 && Boolean(backup.app) && typeof backup.app === "object" && Boolean(backup.wled) && typeof backup.wled === "object";
 }
+
+export function clampByte(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(255, parsed)) : 0;
+}
+
+export function formatUptime(seconds = 0) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const days = Math.floor(safeSeconds / 86400);
+  const hours = Math.floor((safeSeconds % 86400) / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  return days ? `${days} j ${hours} h` : hours ? `${hours} h ${minutes} min` : `${minutes} min`;
+}
+
+export function wifiQuality(signal = 0) {
+  return signal >= 75 ? "Excellent" : signal >= 50 ? "Bon" : signal >= 25 ? "Faible" : "Critique";
+}

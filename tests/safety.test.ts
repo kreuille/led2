@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { escapeHtml, isLed2Backup, normalizeWledUrl, reconstructZones } from "../src/lib/safety.ts";
+import { clampByte, escapeHtml, formatUptime, isLed2Backup, normalizeWledUrl, reconstructZones, wifiQuality } from "../src/lib/safety.ts";
 
 test("escapeHtml neutralise le HTML provenant de WLED", () => {
   assert.equal(escapeHtml('<img src=x onerror="alert(1)">'), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
@@ -29,4 +29,14 @@ test("isLed2Backup exige la signature et la version attendues", () => {
   assert.equal(isLed2Backup({ format: "led2-backup", version: 1, app: {} }), false);
   assert.equal(isLed2Backup({ format: "led2-backup", version: 2, app: {} }), false);
   assert.equal(isLed2Backup({ format: "autre", version: 1, app: {} }), false);
+});
+
+test("les indicateurs de diagnostic restent lisibles aux valeurs limites", () => {
+  assert.equal(clampByte(-4), 0);
+  assert.equal(clampByte(300), 255);
+  assert.equal(clampByte(128), 128);
+  assert.equal(formatUptime(6998), "1 h 56 min");
+  assert.equal(formatUptime(90000), "1 j 1 h");
+  assert.equal(wifiQuality(88), "Excellent");
+  assert.equal(wifiQuality(20), "Critique");
 });

@@ -88,4 +88,19 @@
 .primary-confirm { min-height: 42px; padding: 0 17px; color: #151923; background: #ffad83; border-radius: 9px; font-weight: 800; }
 .error-message { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .error-message button { flex: 0 0 auto; padding: 7px 10px; color: #fff; background: rgba(255,255,255,.1); border: 1px solid currentColor; border-radius: 7px; }
+.diagnostics-panel { margin-top: 24px; padding: 22px; border: 1px solid #294157; background: linear-gradient(145deg,rgba(13,26,41,.92),rgba(9,20,33,.78)); border-radius: 18px; }
+.diagnostics-panel h2 { margin-bottom: 0; }
+.diagnostic-hero { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 15px; padding: 13px 14px; border: 1px solid #294157; border-radius: 11px; background: rgba(8,17,31,.72); }
+.diagnostic-hero > div { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 9px; }
+.diagnostic-hero strong, .diagnostic-hero small { grid-column: 2; } .diagnostic-hero strong { color: #eff6ff; } .diagnostic-hero small { color: #718398; font: 9px 'DM Mono',monospace; }
+.diagnostic-hero > b { color: #93c5fd; font: 10px 'DM Mono',monospace; white-space: nowrap; }
+.health-dot { grid-row: 1 / 3; width: 11px; height: 11px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 10px currentColor; }
+.health-dot.healthy { color: #34d399; background: #34d399; } .health-dot.warning { color: #f59e0b; background: #f59e0b; } .health-dot.critical { color: #ef4444; }
+.diagnostic-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 10px; }
+.diagnostic-grid > div { min-width: 0; padding: 12px; border: 1px solid #22384d; border-radius: 10px; background: rgba(12,27,42,.78); }
+.diagnostic-grid span, .diagnostic-grid strong, .diagnostic-grid small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diagnostic-grid span { color: #718398; font: 8px 'DM Mono',monospace; text-transform: uppercase; letter-spacing: .08em; }
+.diagnostic-grid strong { margin-top: 6px; color: #e7eef7; font-size: 13px; }
+.diagnostic-grid small { margin-top: 4px; color: #7f91a5; font: 8px 'DM Mono',monospace; }
+@media (max-width: 720px) { .diagnostic-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 720px) { .ambience-grid { grid-template-columns: 1fr; } .quick-scenes { grid-template-columns: repeat(2,1fr); } .quick-scenes button:last-child { grid-column: 1 / -1; } .backup-actions { flex-direction: column; } }

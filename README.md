@@ -27,6 +27,8 @@ La sauvegarde complète regroupe dans un fichier JSON la configuration WLED, ses
 
 Depuis la V10, le fichier est d’abord contrôlé puis présenté pour confirmation : choisir un fichier ne modifie plus immédiatement WLED. Les adresses, noms, scènes et effets provenant du réseau ou d’une sauvegarde sont normalisés et échappés avant affichage. Des tests unitaires couvrent ces protections et la reconstruction des zones.
 
+La V11 ajoute un diagnostic live du contrôleur : version WLED, IP, ESP32, nombre de LED, qualité et canal Wi‑Fi, mémoire libre, stockage, cadence et temps de fonctionnement. L’heure de dernière synchronisation confirme visuellement que l’état est encore frais. Les mouvements rapides des curseurs de luminosité sont regroupés en une seule commande finale pour ménager l’ESP32.
+
 Pour un fonctionnement iPhone uniquement sur le Wi-Fi, sans Home Assistant ni cloud, LED2 peut être hébergée directement par WLED. Voir [`docs/WLED_WIFI.md`](docs/WLED_WIFI.md).
 
 Par sécurité, aucun token Home Assistant n'est intégré au JavaScript public. Toute future connexion Home Assistant devra passer par une configuration locale ou un proxy authentifié.
@@ -66,4 +68,4 @@ Lire les documents dans cet ordre :
 
 ## Statut
 
-Version 10 — contrôle Wi-Fi complet, plan interactif 97 zones, synchronisation et reprise réseau, ambiances par étagère, gestes tactiles, presets, restauration confirmée et tests de sécurité.
+Version 11 — contrôle Wi-Fi complet, diagnostic live, plan interactif 97 zones, synchronisation et reprise réseau, commandes regroupées, ambiances par étagère, gestes tactiles, presets, restauration confirmée et tests de sécurité.

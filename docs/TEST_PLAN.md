@@ -1,5 +1,13 @@
 # Plan de tests
 
+## Validation V11
+
+- Diagnostic vérifié contre le contrôleur réel : WLED 0.15.3, ESP32, 194 LED et signal Wi‑Fi
+- Heure de dernière synchronisation rafraîchie sans reconstruire l’interface
+- Vingt événements rapides du curseur produisent une seule requête POST
+- Affichage mobile du diagnostic sans débordement horizontal
+- Tests unitaires des seuils Wi‑Fi, du temps de fonctionnement et des limites 0–255
+
 ## Validation V10
 
 - Tests unitaires de l’échappement HTML des données WLED
