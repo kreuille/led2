@@ -2,7 +2,7 @@
   "name": "LED2 — WLED Control",
   "short_name": "LED2",
   "id": "/led2/",
-  "description": "Studio visuel local pour contrôler, animer et programmer un meuble WLED.",
+  "description": "Contrôle mobile, plan interactif, studio et sauvegarde locale pour un meuble WLED.",
   "lang": "fr",
   "start_url": "/led2/?source=pwa",
   "scope": "/led2/",
