@@ -37,6 +37,12 @@ body { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
 .auto-backup-status { display: flex; align-items: center; gap: 10px; margin: 12px 0; padding: 11px; border: 1px solid #294157; border-radius: 12px; background: #0c1b2a; }
 .auto-backup-status div { flex: 1; min-width: 0; } .auto-backup-status strong, .auto-backup-status small { display: block; } .auto-backup-status small { margin-top: 3px; color: #718398; font: 8px 'DM Mono',monospace; }
 .visual-preset { display: grid; place-items: center; gap: 6px; min-height: 72px; }
+.saved-devices-heading { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 10px; }
+.saved-devices-heading .text-button { padding: 5px 7px; color: #93c5fd; background: transparent; border: 0; font: 8px 'DM Mono',monospace; }
+.saved-device-row { display: grid; grid-template-columns: minmax(0,1fr) 36px; gap: 6px; flex: 1 1 100%; }
+.saved-device-row .saved-device { width: 100%; min-width: 0; }
+.delete-saved-device { color: #fca5a5; background: rgba(127,29,29,.2); border: 1px solid rgba(239,68,68,.3); border-radius: 9px; font-size: 19px; }
+.empty-saved-devices > span { color: #718398; font: 9px 'DM Mono',monospace; }
 .map-legend { display: flex; justify-content: center; gap: 18px; margin: 8px 0 12px; color: #8494a7; font: 8px 'DM Mono',monospace; }
 .map-legend span { display: flex; align-items: center; gap: 5px; } .map-legend i { width: 10px; height: 10px; border-radius: 50%; } .map-legend .rgb { border: 3px solid #a855f7; } .map-legend .white { background: #fff4d6; }
 .led-marker::before { width: 8px; height: 8px; border: 2px solid var(--zone-rgb,rgba(255,255,255,.55)); background: var(--zone-white,#172033); box-shadow: 0 0 7px var(--zone-rgb,transparent), inset 0 0 5px var(--zone-white,transparent); }

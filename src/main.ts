@@ -54,11 +54,11 @@ const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Application root not found");
 const root = app;
 
-let baseUrl = embeddedWledMode ? window.location.origin : "";
 let connectionState: ConnectionState = "idle";
 let deviceName = "Aucun appareil connecté";
 let state: WledState = { on: false, bri: 128, seg: [{ col: [[255, 98, 50]], fx: 0, sx: 128, ix: 128 }] };
 let savedDevices: SavedDevice[] = loadSavedDevices();
+let baseUrl = embeddedWledMode ? window.location.origin : loadLastDeviceUrl(savedDevices);
 let scanResults: DiscoveredDevice[] = [];
 let scanning = false;
 let scanMessage = "";
@@ -143,12 +143,40 @@ let autoBackupTimer: number | undefined;
 let stateBeforeLastCommand: WledState | null = null;
 const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-window.addEventListener("online", () => { isOnline = true; render(); });
+window.addEventListener("online", () => { isOnline = true; render(); if (baseUrl && connectionState !== "connected") void connect(new Event("submit") as SubmitEvent); });
 window.addEventListener("offline", () => { isOnline = false; render(); });
 
 window.addEventListener("beforeinstallprompt", event => { event.preventDefault(); deferredInstallPrompt = event as InstallPrompt; render(); });
 window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; installMessage = "LED2 est installée."; render(); });
-function loadSavedDevices(): SavedDevice[] { try { const value = JSON.parse(localStorage.getItem("led2.devices") || "[]"); return Array.isArray(value) ? value.flatMap(item => { const url = item && typeof item.url === "string" ? normalizeWledUrl(item.url) : null; if (!url || typeof item.name !== "string") return []; const aliases = Array.isArray(item.aliases) ? item.aliases.flatMap((alias: unknown) => typeof alias === "string" && normalizeWledUrl(alias) ? [normalizeWledUrl(alias)!] : []).slice(0, 5) : []; return [{ url, name: item.name.slice(0, 80), id: typeof item.id === "string" ? item.id.slice(0, 32) : undefined, aliases }]; }) : []; } catch { return []; } }
+function loadSavedDevices(): SavedDevice[] {
+  try {
+    const value = JSON.parse(localStorage.getItem("led2.devices") || "[]");
+    if (!Array.isArray(value)) return [];
+    const cleaned: SavedDevice[] = [];
+    value.forEach(item => {
+      const url = item && typeof item.url === "string" ? normalizeWledUrl(item.url) : null;
+      if (!url || typeof item.name !== "string") return;
+      const id = typeof item.id === "string" ? item.id.replace(/[^0-9a-f]/gi, "").toLowerCase().slice(0, 32) : undefined;
+      const aliases = Array.isArray(item.aliases) ? item.aliases.flatMap((alias: unknown) => typeof alias === "string" && normalizeWledUrl(alias) ? [normalizeWledUrl(alias)!] : []).slice(0, 8) : [];
+      const stableUrl = deviceStableUrl({ mac: id }) || url;
+      const allUrls = [...new Set([stableUrl, url, ...aliases])];
+      const existing = cleaned.find(device => (id && device.id === id) || [device.url, ...(device.aliases || [])].some(candidate => allUrls.includes(candidate)));
+      if (existing) {
+        existing.aliases = [...new Set([...(existing.aliases || []), ...allUrls])].slice(0, 8);
+        existing.url = deviceStableUrl({ mac: existing.id || id }) || existing.url;
+        existing.id ||= id;
+        existing.name = item.name.slice(0, 80) || existing.name;
+      } else cleaned.push({ url: stableUrl, name: item.name.slice(0, 80), id, aliases: allUrls });
+    });
+    const result = cleaned.slice(0, 12);
+    localStorage.setItem("led2.devices", JSON.stringify(result));
+    return result;
+  } catch { return []; }
+}
+function loadLastDeviceUrl(devices: SavedDevice[]) {
+  const stored = normalizeWledUrl(localStorage.getItem("led2.lastDevice") || "");
+  return stored || devices[0]?.url || "";
+}
 function loadAutoBackup(): AutoBackupSnapshot | null {
   try {
     const value = JSON.parse(localStorage.getItem("led2.autoBackup") || "null") as AutoBackupSnapshot | null;
@@ -364,11 +392,16 @@ async function recoverConnection() {
       if (expectedId && info.mac?.toLowerCase() !== expectedId) continue;
       baseUrl = candidate;
       deviceInfo = info;
+      deviceName = info.name || deviceName;
       connectionState = "connected";
       stateSyncFailures = 0;
       recoveryMessage = `Contrôleur retrouvé via ${hostFrom(candidate)}.`;
       rememberDevice({ url: candidate, name: info.name || deviceName, id: info.mac, aliases: [candidate, ...(current?.aliases || [])] });
       await pollState();
+      await Promise.all([fetchEffectsList(), fetchPresetCatalog()]);
+      startStateSync();
+      startInfoSync();
+      startAutoBackup();
       recoveringConnection = false;
       render();
       return;
@@ -611,7 +644,7 @@ function render() {
   root.innerHTML = `
     <main class="shell">
       <header class="topbar">
-        <div class="brand"><span class="brand-mark">✦</span><div><strong>WLED</strong><small>V20 · LED2 MOBILE STUDIO</small></div></div>
+        <div class="brand"><span class="brand-mark">✦</span><div><strong>WLED</strong><small>V21 · LED2 MOBILE STUDIO</small></div></div>
         <div class="connection-pill ${statusClass}"><span class="status-dot"></span>${statusLabel}</div>
       </header>
       ${renderQuickNavigation()}
@@ -629,7 +662,7 @@ function render() {
         ${connectionState === "error" ? '<div class="error-message"><span>Impossible de joindre cet appareil. Vérifiez son adresse et votre réseau.</span><button id="retry-connection">Réessayer</button></div>' : ""}
       </section>
       <div class="device-tools"><div><p class="eyebrow">DÉCOUVERTE LOCALE</p><h3>Appareils sur le réseau</h3><p class="hint">LED2 tente d’identifier la forme de votre réseau avant de scanner les adresses.</p></div><div class="scan-row"><input id="network-prefix" type="text" value="${escapeHtml(detectedPrefixes[0] || "192.168.1")}" aria-label="Préfixe réseau" /><button id="detect-button" class="secondary-button">Détecter</button><button id="scan-button" class="secondary-button">${scanning ? "Scan en cours…" : "Scanner"}</button></div>${scanMessage ? `<p class="hint">${escapeHtml(scanMessage)}</p>` : ""}${scanResults.length ? `<div class="device-list">${scanResults.map(device => `<button class="device-item" data-device-url="${escapeHtml(device.url)}"><span class="device-icon">✦</span><span><strong>${escapeHtml(device.name)}</strong><small>${escapeHtml(device.url)}</small></span><span>→</span></button>`).join("")}</div>` : ""}</div>
-      ${savedDevices.length ? `<div class="saved-devices"><p class="eyebrow">MES APPAREILS</p>${savedDevices.map(device => `<button class="saved-device" data-saved-url="${escapeHtml(device.url)}"><span>${escapeHtml(device.name)}</span><small>${escapeHtml(deviceStableUrl({ mac: device.id }) || device.url)}</small></button>`).join("")}</div>` : ""}
+      ${savedDevices.length ? `<div class="saved-devices"><div class="saved-devices-heading"><p class="eyebrow">MES APPAREILS · ${savedDevices.length}</p><button id="clear-saved-devices" class="text-button">Nettoyer la liste</button></div>${savedDevices.map((device, index) => `<div class="saved-device-row"><button class="saved-device" data-saved-url="${escapeHtml(device.url)}"><span>${escapeHtml(device.name)}${index === 0 ? " · dernier" : ""}</span><small>${escapeHtml(deviceStableUrl({ mac: device.id }) || device.url)}</small></button><button class="delete-saved-device" data-delete-device="${index}" aria-label="Supprimer ${escapeHtml(device.name)}">×</button></div>`).join("")}</div>` : `<div class="saved-devices empty-saved-devices"><p class="eyebrow">MES APPAREILS</p><span>Aucun appareil mémorisé.</span></div>`}
       ${renderDiagnostics()}` : ""}
       ${(studioOnly || settingsOnly) ? `<section class="wled-presets"><div class="section-title"><div><p class="eyebrow">PRESETS WLED</p><h2>Mémoires de l’appareil</h2></div><button id="preset-record" class="secondary-button">${presetRecordMode ? "Annuler" : "Enregistrer"}</button></div>${presetMessage ? `<p class="group-message">${presetMessage}</p>` : ""}<div class="preset-grid">${[1,2,3,4].map(id => { const preset = presetCatalog.find(item => item.id === id); return `<button class="preset-slot visual-preset" data-preset="${id}" style="--preset-color:${preset?.color || "#334155"}" ${connectionState !== "connected" ? "disabled" : ""}><i></i>${escapeHtml(preset?.name || `Mémoire ${id}`)}</button>`; }).join("")}</div></section>` : ""}
       ${mapOnly ? `<section class="zones-panel"><div class="section-title"><div><p class="eyebrow">PLAN DU MEUBLE · ${isMatrixMode ? "MATRIX HD" : "SEGMENTS"}</p><h2>Choisir les LED sur la photo</h2></div><button id="zones-toggle" class="secondary-button">${zonesOpen ? "Masquer les numéros" : "LED par LED"}</button></div>${renderFurnitureSelector()}<div class="map-legend"><span><i class="rgb"></i>Anneau RGB</span><span><i class="white"></i>Centre blanc</span></div><div class="map-actions"><div><button id="zones-all">Tout</button><button id="zones-none">Rien</button><button id="zones-pattern">1 sur 2</button><button id="zones-range" class="${rangeMode ? "active" : ""}">${rangeAnchor === null ? "Plage" : `De ${rangeAnchor + 1} à…`}</button><button id="zones-undo" ${selectionUndo.length ? "" : "disabled"}>↶</button><button id="zones-redo" ${selectionRedo.length ? "" : "disabled"}>↷</button></div><label><input id="live-zone-apply" type="checkbox" ${liveZoneApply ? "checked" : ""} ${connectionState !== "connected" ? "disabled" : ""} /> Application directe</label><span>${zoneState.filter(Boolean).length} sélectionnées</span></div><p class="selection-help">Touchez une LED, faites glisser sur la photo, ou utilisez « Plage » pour sélectionner deux extrémités.</p>${layoutMessage ? `<p class="layout-message">${layoutMessage}</p>` : ""}${zonesOpen ? `<div class="layout-calibration"><p>Limites mesurées des étagères — modifiables si le ruban est déplacé.</p><label>Fin étagère basse<input id="bottom-end" type="number" min="1" max="95" value="${furnitureLayout.bottomEnd}" /></label><label>Fin petite étagère<input id="middle-end" type="number" min="2" max="96" value="${furnitureLayout.middleEnd}" /></label><button id="save-layout">Mémoriser</button></div><div class="zone-grid">${zoneState.map((active, index) => `<button class="zone-cell ${active ? "active" : ""}" data-zone="${index}">${index + 1}</button>`).join("")}</div>` : ""}<button id="zones-apply" class="primary-wide" ${connectionState !== "connected" ? "disabled" : ""}>Allumer la sélection (${zoneState.filter(Boolean).length})</button></section>${renderShelfAmbiences()}` : ""}
@@ -675,6 +708,8 @@ function render() {
   document.querySelector<HTMLButtonElement>("#detect-button")?.addEventListener("click", detectNetwork);
   document.querySelectorAll<HTMLButtonElement>("[data-device-url]").forEach(button => button.addEventListener("click", () => selectDevice(button.dataset.deviceUrl || "")));
   document.querySelectorAll<HTMLButtonElement>("[data-saved-url]").forEach(button => button.addEventListener("click", () => selectDevice(button.dataset.savedUrl || "")));
+  document.querySelectorAll<HTMLButtonElement>("[data-delete-device]").forEach(button => button.addEventListener("click", () => deleteSavedDevice(Number(button.dataset.deleteDevice))));
+  document.querySelector<HTMLButtonElement>("#clear-saved-devices")?.addEventListener("click", clearSavedDevices);
   document.querySelector<HTMLButtonElement>("#save-scene")?.addEventListener("click", saveCurrentScene);
   document.querySelectorAll<HTMLButtonElement>("[data-scene-id]").forEach(button => button.addEventListener("click", () => applyScene(button.dataset.sceneId || "")));
   document.querySelectorAll<HTMLButtonElement>("[data-delete-scene]").forEach(button => button.addEventListener("click", () => deleteScene(button.dataset.deleteScene || "")));
@@ -1400,11 +1435,36 @@ function selectDevice(url: string) { baseUrl = url; const input = document.query
 
 function rememberDevice(device: SavedDevice) {
   const id = device.id?.toLowerCase();
-  const existing = savedDevices.find(item => (id && item.id?.toLowerCase() === id) || item.url === device.url);
-  const aliases = [...new Set([deviceStableUrl({ mac: device.id }), device.url, ...(device.aliases || []), ...(existing?.aliases || []), existing?.url || ""].filter(Boolean))].slice(0, 6);
-  const merged: SavedDevice = { url: deviceStableUrl({ mac: device.id }) || device.url, name: device.name, id: device.id || existing?.id, aliases };
-  savedDevices = [merged, ...savedDevices.filter(item => item !== existing && item.url !== merged.url)].slice(0, 12);
+  const incomingUrls = [...new Set([device.url, ...(device.aliases || [])].filter(Boolean))];
+  const matching = savedDevices.filter(item => (id && item.id?.toLowerCase() === id) || [item.url, ...(item.aliases || [])].some(url => incomingUrls.includes(url)));
+  const aliases = [...new Set([deviceStableUrl({ mac: device.id }), ...incomingUrls, ...matching.flatMap(item => [item.url, ...(item.aliases || [])])].filter(Boolean))].slice(0, 8);
+  const merged: SavedDevice = { url: deviceStableUrl({ mac: device.id }) || device.url, name: device.name, id: device.id || matching.find(item => item.id)?.id, aliases };
+  savedDevices = [merged, ...savedDevices.filter(item => !matching.includes(item) && item.url !== merged.url)].slice(0, 12);
   localStorage.setItem("led2.devices", JSON.stringify(savedDevices));
+  localStorage.setItem("led2.lastDevice", merged.url);
+}
+
+function deleteSavedDevice(index: number) {
+  const removed = savedDevices[index];
+  if (!removed) return;
+  savedDevices = savedDevices.filter((_, deviceIndex) => deviceIndex !== index);
+  localStorage.setItem("led2.devices", JSON.stringify(savedDevices));
+  const last = normalizeWledUrl(localStorage.getItem("led2.lastDevice") || "");
+  if (last && [removed.url, ...(removed.aliases || [])].includes(last)) {
+    if (savedDevices[0]) localStorage.setItem("led2.lastDevice", savedDevices[0].url);
+    else localStorage.removeItem("led2.lastDevice");
+  }
+  scanMessage = `« ${removed.name} » a été supprimé de la liste.`;
+  render();
+}
+
+function clearSavedDevices() {
+  const current = connectionState === "connected" ? savedDevices.find(device => device.id && device.id === deviceInfo?.mac?.toLowerCase()) || savedDevices.find(device => [device.url, ...(device.aliases || [])].includes(baseUrl)) : undefined;
+  savedDevices = current ? [current] : [];
+  localStorage.setItem("led2.devices", JSON.stringify(savedDevices));
+  if (current) localStorage.setItem("led2.lastDevice", current.url); else localStorage.removeItem("led2.lastDevice");
+  scanMessage = current ? "Les anciennes connexions ont été supprimées. Le WLED actif est conservé." : "La liste des appareils enregistrés est vide.";
+  render();
 }
 
 async function scanNetwork() {
@@ -1497,6 +1557,7 @@ async function connect(event: SubmitEvent) {
     startAutoBackup();
   } catch {
     connectionState = "error";
+    if (savedDevices.length && !recoveringConnection) void recoverConnection();
   }
   render();
 }
@@ -1511,4 +1572,4 @@ async function updateState(patch: Partial<WledState>) {
 }
 
 render();
-if (embeddedWledMode) void connect(new Event("submit") as SubmitEvent);
+if (baseUrl) void connect(new Event("submit") as SubmitEvent);
